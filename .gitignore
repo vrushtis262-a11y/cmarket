@@ -1,0 +1,23 @@
+# Build directories
+build/
+cmake-build-*/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+compile_commands.json
+
+# Logs
+*.log
+
+# Executables
+cmarket
