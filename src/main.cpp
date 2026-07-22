@@ -1,13 +1,27 @@
+#include "http_client.hpp"
+
+#include <exception>
 #include <iostream>
 
 int main()
 {
-    std::cout << "========================================\n";
-    std::cout << "        CMarket v0.1.0\n";
-    std::cout << " Low-Latency Prediction Market Engine\n";
-    std::cout << "========================================\n\n";
+    try {
+        const HttpClient client;
 
-    std::cout << "System initialized successfully.\n";
+        const std::string response = client.get(
+            "example.com",
+            "/"
+        );
 
-    return 0;
+        std::cout << "HTTPS request succeeded.\n";
+        std::cout << "Received " << response.size() << " bytes.\n";
+
+        return 0;
+    } catch (const std::exception& exception) {
+        std::cerr << "HTTP request failed: "
+                  << exception.what()
+                  << '\n';
+
+        return 1;
+    }
 }

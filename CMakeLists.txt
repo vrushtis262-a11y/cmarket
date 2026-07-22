@@ -18,6 +18,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_executable(
     cmarket
     src/main.cpp
+    src/http_client.cpp
 )
 
 target_include_directories(
