@@ -19,6 +19,7 @@ add_executable(
     cmarket
     src/main.cpp
     src/http_client.cpp
+    src/order_book.cpp
 )
 
 target_include_directories(
