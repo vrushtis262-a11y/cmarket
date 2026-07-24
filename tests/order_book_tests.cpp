@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -14,7 +16,7 @@ PriceLevel level(
 {
     return PriceLevel{
         OrderBook::price_to_ticks(price),
-        OrderBook::price_to_ticks(quantity)
+        OrderBook::quantity_to_fixed(quantity)
     };
 }
 
@@ -228,7 +230,7 @@ TEST(OrderBookTest, AggregatesDuplicatePriceLevels)
 
     EXPECT_EQ(
         book.bids()[0].quantity,
-        OrderBook::price_to_ticks("25")
+        OrderBook::quantity_to_fixed("25")
     );
 
     EXPECT_EQ(
@@ -238,7 +240,7 @@ TEST(OrderBookTest, AggregatesDuplicatePriceLevels)
 
     EXPECT_EQ(
         book.asks()[0].quantity,
-        OrderBook::price_to_ticks("20")
+        OrderBook::quantity_to_fixed("20")
     );
 }
 
@@ -275,5 +277,49 @@ TEST(OrderBookTest, ReplacesPreviousSnapshot)
     EXPECT_EQ(
         book.best_ask()->price_ticks,
         OrderBook::price_to_ticks("0.538")
+    );
+}
+
+TEST(OrderBookTest, ParsesQuantitySeparatelyFromPrice)
+{
+    EXPECT_EQ(
+        OrderBook::quantity_to_fixed("25"),
+        25 * OrderBook::ticks_per_unit
+    );
+
+    EXPECT_EQ(
+        OrderBook::quantity_to_fixed("12.345678"),
+        12'345'678
+    );
+}
+
+TEST(OrderBookTest, RejectsInvalidQuantity)
+{
+    EXPECT_THROW(
+        static_cast<void>(
+            OrderBook::quantity_to_fixed("")
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            OrderBook::quantity_to_fixed("-1")
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            OrderBook::quantity_to_fixed("1.1234567")
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            OrderBook::quantity_to_fixed("abc")
+        ),
+        std::invalid_argument
     );
 }

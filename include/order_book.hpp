@@ -51,7 +51,14 @@ public:
     bool empty() const noexcept;
 
     [[nodiscard]]
-    static std::int64_t price_to_ticks(const std::string& price);
+    static std::int64_t price_to_ticks(
+        const std::string& price
+    );
+
+    [[nodiscard]]
+    static std::int64_t quantity_to_fixed(
+        const std::string& quantity
+    );
 
     [[nodiscard]]
     static std::string format_price(

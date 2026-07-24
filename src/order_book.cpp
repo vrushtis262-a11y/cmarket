@@ -7,16 +7,144 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace {
 
+std::int64_t parse_non_negative_fixed(
+    const std::string& value,
+    const std::string& field_name
+)
+{
+    if (value.empty()) {
+        throw std::invalid_argument(
+            field_name + " cannot be empty."
+        );
+    }
+
+    std::size_t position = 0;
+
+    if (value[position] == '+') {
+        ++position;
+    }
+    else if (value[position] == '-') {
+        throw std::invalid_argument(
+            field_name + " cannot be negative."
+        );
+    }
+
+    if (position == value.size()) {
+        throw std::invalid_argument(
+            "Invalid " + field_name + "."
+        );
+    }
+
+    std::int64_t whole_part = 0;
+    bool has_whole_digits = false;
+
+    while (
+        position < value.size() &&
+        std::isdigit(
+            static_cast<unsigned char>(value[position])
+        )
+    ) {
+        has_whole_digits = true;
+
+        const int digit = value[position] - '0';
+
+        if (
+            whole_part >
+            (
+                std::numeric_limits<std::int64_t>::max() -
+                digit
+            ) / 10
+        ) {
+            throw std::overflow_error(
+                field_name + " is too large."
+            );
+        }
+
+        whole_part = whole_part * 10 + digit;
+        ++position;
+    }
+
+    std::int64_t fractional_part = 0;
+    std::size_t fractional_digits = 0;
+
+    if (
+        position < value.size() &&
+        value[position] == '.'
+    ) {
+        ++position;
+
+        while (
+            position < value.size() &&
+            std::isdigit(
+                static_cast<unsigned char>(
+                    value[position]
+                )
+            )
+        ) {
+            if (fractional_digits >= 6) {
+                throw std::invalid_argument(
+                    field_name +
+                    " supports at most 6 decimal places."
+                );
+            }
+
+            fractional_part =
+                fractional_part * 10 +
+                (value[position] - '0');
+
+            ++fractional_digits;
+            ++position;
+        }
+    }
+
+    if (!has_whole_digits && fractional_digits == 0) {
+        throw std::invalid_argument(
+            "Invalid " + field_name + "."
+        );
+    }
+
+    if (position != value.size()) {
+        throw std::invalid_argument(
+            field_name + " contains invalid characters."
+        );
+    }
+
+    while (fractional_digits < 6) {
+        fractional_part *= 10;
+        ++fractional_digits;
+    }
+
+    if (
+        whole_part >
+        (
+            std::numeric_limits<std::int64_t>::max() -
+            fractional_part
+        ) / OrderBook::ticks_per_unit
+    ) {
+        throw std::overflow_error(
+            field_name + " is too large."
+        );
+    }
+
+    return whole_part * OrderBook::ticks_per_unit +
+           fractional_part;
+}
+
 std::vector<PriceLevel> normalize_bids(
     const std::vector<PriceLevel>& levels
 )
 {
-    std::map<std::int64_t, std::int64_t, std::greater<>> aggregated;
+    std::map<
+        std::int64_t,
+        std::int64_t,
+        std::greater<>
+    > aggregated;
 
     for (const PriceLevel& level : levels) {
         if (level.price_ticks < 0) {
@@ -35,10 +163,14 @@ std::vector<PriceLevel> normalize_bids(
             continue;
         }
 
-        std::int64_t& quantity = aggregated[level.price_ticks];
+        std::int64_t& quantity =
+            aggregated[level.price_ticks];
 
-        if (level.quantity >
-            std::numeric_limits<std::int64_t>::max() - quantity) {
+        if (
+            level.quantity >
+            std::numeric_limits<std::int64_t>::max() -
+                quantity
+        ) {
             throw std::overflow_error(
                 "Duplicate bid quantity overflow."
             );
@@ -51,7 +183,12 @@ std::vector<PriceLevel> normalize_bids(
     normalized.reserve(aggregated.size());
 
     for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back({price_ticks, quantity});
+        normalized.push_back(
+            PriceLevel{
+                price_ticks,
+                quantity
+            }
+        );
     }
 
     return normalized;
@@ -80,10 +217,14 @@ std::vector<PriceLevel> normalize_asks(
             continue;
         }
 
-        std::int64_t& quantity = aggregated[level.price_ticks];
+        std::int64_t& quantity =
+            aggregated[level.price_ticks];
 
-        if (level.quantity >
-            std::numeric_limits<std::int64_t>::max() - quantity) {
+        if (
+            level.quantity >
+            std::numeric_limits<std::int64_t>::max() -
+                quantity
+        ) {
             throw std::overflow_error(
                 "Duplicate ask quantity overflow."
             );
@@ -96,7 +237,12 @@ std::vector<PriceLevel> normalize_asks(
     normalized.reserve(aggregated.size());
 
     for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back({price_ticks, quantity});
+        normalized.push_back(
+            PriceLevel{
+                price_ticks,
+                quantity
+            }
+        );
     }
 
     return normalized;
@@ -109,9 +255,14 @@ std::int64_t calculate_depth(
     std::int64_t depth = 0;
 
     for (const PriceLevel& level : levels) {
-        if (level.quantity >
-            std::numeric_limits<std::int64_t>::max() - depth) {
-            throw std::overflow_error("Order-book depth overflow.");
+        if (
+            level.quantity >
+            std::numeric_limits<std::int64_t>::max() -
+                depth
+        ) {
+            throw std::overflow_error(
+                "Order-book depth overflow."
+            );
         }
 
         depth += level.quantity;
@@ -224,8 +375,11 @@ OrderBook::total_depth() const noexcept
     const std::int64_t bid_total = bid_depth();
     const std::int64_t ask_total = ask_depth();
 
-    if (ask_total >
-        std::numeric_limits<std::int64_t>::max() - bid_total) {
+    if (
+        ask_total >
+        std::numeric_limits<std::int64_t>::max() -
+            bid_total
+    ) {
         return std::numeric_limits<std::int64_t>::max();
     }
 
@@ -241,117 +395,20 @@ std::int64_t OrderBook::price_to_ticks(
     const std::string& price
 )
 {
-    if (price.empty()) {
-        throw std::invalid_argument(
-            "Price cannot be empty."
-        );
-    }
+    return parse_non_negative_fixed(
+        price,
+        "Price"
+    );
+}
 
-    std::size_t position = 0;
-
-    if (price[position] == '+') {
-        ++position;
-    }
-    else if (price[position] == '-') {
-        throw std::invalid_argument(
-            "Price cannot be negative."
-        );
-    }
-
-    if (position == price.size()) {
-        throw std::invalid_argument("Invalid price.");
-    }
-
-    std::int64_t whole_part = 0;
-    bool has_whole_digits = false;
-
-    while (
-        position < price.size() &&
-        std::isdigit(
-            static_cast<unsigned char>(price[position])
-        )
-    ) {
-        has_whole_digits = true;
-
-        const int digit = price[position] - '0';
-
-        if (
-            whole_part >
-            (
-                std::numeric_limits<std::int64_t>::max() -
-                digit
-            ) / 10
-        ) {
-            throw std::overflow_error(
-                "Price is too large."
-            );
-        }
-
-        whole_part = whole_part * 10 + digit;
-        ++position;
-    }
-
-    std::int64_t fractional_part = 0;
-    std::size_t fractional_digits = 0;
-
-    if (
-        position < price.size() &&
-        price[position] == '.'
-    ) {
-        ++position;
-
-        while (
-            position < price.size() &&
-            std::isdigit(
-                static_cast<unsigned char>(
-                    price[position]
-                )
-            )
-        ) {
-            if (fractional_digits >= 6) {
-                throw std::invalid_argument(
-                    "Price supports at most 6 decimal places."
-                );
-            }
-
-            fractional_part =
-                fractional_part * 10 +
-                (price[position] - '0');
-
-            ++fractional_digits;
-            ++position;
-        }
-    }
-
-    if (!has_whole_digits && fractional_digits == 0) {
-        throw std::invalid_argument("Invalid price.");
-    }
-
-    if (position != price.size()) {
-        throw std::invalid_argument(
-            "Price contains invalid characters."
-        );
-    }
-
-    while (fractional_digits < 6) {
-        fractional_part *= 10;
-        ++fractional_digits;
-    }
-
-    if (
-        whole_part >
-        (
-            std::numeric_limits<std::int64_t>::max() -
-            fractional_part
-        ) / ticks_per_unit
-    ) {
-        throw std::overflow_error(
-            "Price is too large."
-        );
-    }
-
-    return whole_part * ticks_per_unit +
-           fractional_part;
+std::int64_t OrderBook::quantity_to_fixed(
+    const std::string& quantity
+)
+{
+    return parse_non_negative_fixed(
+        quantity,
+        "Quantity"
+    );
 }
 
 std::string OrderBook::format_price(

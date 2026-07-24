@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using json = nlohmann::json;
@@ -31,7 +33,8 @@ std::vector<PriceLevel> parse_levels(
 
     if (!levels.is_array()) {
         throw std::runtime_error(
-            "'" + side_name + "' must be a JSON array."
+            "'" + side_name +
+            "' must be a JSON array."
         );
     }
 
@@ -54,6 +57,15 @@ std::vector<PriceLevel> parse_levels(
             );
         }
 
+        if (
+            !level.at("price").is_string() ||
+            !level.at("size").is_string()
+        ) {
+            throw std::runtime_error(
+                "Order-book price and size must be strings."
+            );
+        }
+
         const std::string price =
             level.at("price").get<std::string>();
 
@@ -63,7 +75,7 @@ std::vector<PriceLevel> parse_levels(
         parsed_levels.push_back(
             PriceLevel{
                 OrderBook::price_to_ticks(price),
-                OrderBook::price_to_ticks(size)
+                OrderBook::quantity_to_fixed(size)
             }
         );
     }
@@ -130,27 +142,32 @@ void print_order_book(const OrderBook& book)
     );
 
     std::cout << '\n';
-    std::cout << "Bid levels: "
-              << book.bids().size()
-              << '\n';
 
-    std::cout << "Ask levels: "
-              << book.asks().size()
-              << '\n';
+    std::cout
+        << "Bid levels: "
+        << book.bids().size()
+        << '\n';
 
-    std::cout << "Bid depth:  "
-              << OrderBook::format_price(
-                     book.bid_depth(),
-                     6
-                 )
-              << '\n';
+    std::cout
+        << "Ask levels: "
+        << book.asks().size()
+        << '\n';
 
-    std::cout << "Ask depth:  "
-              << OrderBook::format_price(
-                     book.ask_depth(),
-                     6
-                 )
-              << '\n';
+    std::cout
+        << "Bid depth:  "
+        << OrderBook::format_price(
+               book.bid_depth(),
+               6
+           )
+        << '\n';
+
+    std::cout
+        << "Ask depth:  "
+        << OrderBook::format_price(
+               book.ask_depth(),
+               6
+           )
+        << '\n';
 }
 
 void run_book_command(const std::string& token_id)
