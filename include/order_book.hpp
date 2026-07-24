@@ -20,6 +20,16 @@ public:
         std::vector<PriceLevel> asks
     );
 
+    void update_bid(
+        std::int64_t price_ticks,
+        std::int64_t quantity
+    );
+
+    void update_ask(
+        std::int64_t price_ticks,
+        std::int64_t quantity
+    );
+
     [[nodiscard]]
     const std::vector<PriceLevel>& bids() const noexcept;
 
@@ -51,9 +61,7 @@ public:
     bool empty() const noexcept;
 
     [[nodiscard]]
-    static std::int64_t price_to_ticks(
-        const std::string& price
-    );
+    static std::int64_t price_to_ticks(const std::string& price);
 
     [[nodiscard]]
     static std::int64_t quantity_to_fixed(

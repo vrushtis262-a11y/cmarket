@@ -1,5 +1,6 @@
 #include "order_book.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <functional>
 #include <iomanip>
@@ -7,13 +8,12 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
-#include <string>
 #include <utility>
 #include <vector>
 
 namespace {
 
-std::int64_t parse_non_negative_fixed(
+std::int64_t parse_fixed_nonnegative(
     const std::string& value,
     const std::string& field_name
 )
@@ -82,9 +82,7 @@ std::int64_t parse_non_negative_fixed(
         while (
             position < value.size() &&
             std::isdigit(
-                static_cast<unsigned char>(
-                    value[position]
-                )
+                static_cast<unsigned char>(value[position])
             )
         ) {
             if (fractional_digits >= 6) {
@@ -136,28 +134,37 @@ std::int64_t parse_non_negative_fixed(
            fractional_part;
 }
 
+void validate_level(
+    std::int64_t price_ticks,
+    std::int64_t quantity,
+    const std::string& side_name
+)
+{
+    if (price_ticks < 0) {
+        throw std::invalid_argument(
+            side_name + " price cannot be negative."
+        );
+    }
+
+    if (quantity < 0) {
+        throw std::invalid_argument(
+            side_name + " quantity cannot be negative."
+        );
+    }
+}
+
 std::vector<PriceLevel> normalize_bids(
     const std::vector<PriceLevel>& levels
 )
 {
-    std::map<
-        std::int64_t,
-        std::int64_t,
-        std::greater<>
-    > aggregated;
+    std::map<std::int64_t, std::int64_t, std::greater<>> aggregated;
 
     for (const PriceLevel& level : levels) {
-        if (level.price_ticks < 0) {
-            throw std::invalid_argument(
-                "Bid price cannot be negative."
-            );
-        }
-
-        if (level.quantity < 0) {
-            throw std::invalid_argument(
-                "Bid quantity cannot be negative."
-            );
-        }
+        validate_level(
+            level.price_ticks,
+            level.quantity,
+            "Bid"
+        );
 
         if (level.quantity == 0) {
             continue;
@@ -183,12 +190,7 @@ std::vector<PriceLevel> normalize_bids(
     normalized.reserve(aggregated.size());
 
     for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back(
-            PriceLevel{
-                price_ticks,
-                quantity
-            }
-        );
+        normalized.push_back({price_ticks, quantity});
     }
 
     return normalized;
@@ -201,17 +203,11 @@ std::vector<PriceLevel> normalize_asks(
     std::map<std::int64_t, std::int64_t> aggregated;
 
     for (const PriceLevel& level : levels) {
-        if (level.price_ticks < 0) {
-            throw std::invalid_argument(
-                "Ask price cannot be negative."
-            );
-        }
-
-        if (level.quantity < 0) {
-            throw std::invalid_argument(
-                "Ask quantity cannot be negative."
-            );
-        }
+        validate_level(
+            level.price_ticks,
+            level.quantity,
+            "Ask"
+        );
 
         if (level.quantity == 0) {
             continue;
@@ -237,15 +233,94 @@ std::vector<PriceLevel> normalize_asks(
     normalized.reserve(aggregated.size());
 
     for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back(
-            PriceLevel{
-                price_ticks,
-                quantity
-            }
-        );
+        normalized.push_back({price_ticks, quantity});
     }
 
     return normalized;
+}
+
+void update_bid_levels(
+    std::vector<PriceLevel>& levels,
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    validate_level(price_ticks, quantity, "Bid");
+
+    const auto iterator = std::lower_bound(
+        levels.begin(),
+        levels.end(),
+        price_ticks,
+        [](
+            const PriceLevel& level,
+            std::int64_t target_price
+        ) {
+            return level.price_ticks > target_price;
+        }
+    );
+
+    if (
+        iterator != levels.end() &&
+        iterator->price_ticks == price_ticks
+    ) {
+        if (quantity == 0) {
+            levels.erase(iterator);
+        }
+        else {
+            iterator->quantity = quantity;
+        }
+
+        return;
+    }
+
+    if (quantity != 0) {
+        levels.insert(
+            iterator,
+            PriceLevel{price_ticks, quantity}
+        );
+    }
+}
+
+void update_ask_levels(
+    std::vector<PriceLevel>& levels,
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    validate_level(price_ticks, quantity, "Ask");
+
+    const auto iterator = std::lower_bound(
+        levels.begin(),
+        levels.end(),
+        price_ticks,
+        [](
+            const PriceLevel& level,
+            std::int64_t target_price
+        ) {
+            return level.price_ticks < target_price;
+        }
+    );
+
+    if (
+        iterator != levels.end() &&
+        iterator->price_ticks == price_ticks
+    ) {
+        if (quantity == 0) {
+            levels.erase(iterator);
+        }
+        else {
+            iterator->quantity = quantity;
+        }
+
+        return;
+    }
+
+    if (quantity != 0) {
+        levels.insert(
+            iterator,
+            PriceLevel{price_ticks, quantity}
+        );
+    }
 }
 
 std::int64_t calculate_depth(
@@ -286,6 +361,30 @@ void OrderBook::replace_snapshot(
 
     bids_ = std::move(normalized_bids);
     asks_ = std::move(normalized_asks);
+}
+
+void OrderBook::update_bid(
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    update_bid_levels(
+        bids_,
+        price_ticks,
+        quantity
+    );
+}
+
+void OrderBook::update_ask(
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    update_ask_levels(
+        asks_,
+        price_ticks,
+        quantity
+    );
 }
 
 const std::vector<PriceLevel>&
@@ -395,17 +494,14 @@ std::int64_t OrderBook::price_to_ticks(
     const std::string& price
 )
 {
-    return parse_non_negative_fixed(
-        price,
-        "Price"
-    );
+    return parse_fixed_nonnegative(price, "Price");
 }
 
 std::int64_t OrderBook::quantity_to_fixed(
     const std::string& quantity
 )
 {
-    return parse_non_negative_fixed(
+    return parse_fixed_nonnegative(
         quantity,
         "Quantity"
     );
@@ -424,7 +520,8 @@ std::string OrderBook::format_price(
 
     if (decimal_places > 6) {
         throw std::invalid_argument(
-            "Price formatting supports at most 6 decimal places."
+            "Price formatting supports at most "
+            "6 decimal places."
         );
     }
 
