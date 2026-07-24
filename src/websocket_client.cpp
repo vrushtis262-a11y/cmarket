@@ -11,6 +11,8 @@
 
 #include <openssl/ssl.h>
 
+#include <nlohmann/json.hpp>
+
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -22,12 +24,22 @@ namespace ssl = net::ssl;
 
 using tcp = net::ip::tcp;
 
+std::string WebSocketClient::build_subscription_message(
+    const std::string& token_id
+)
+{
+    const nlohmann::json message = {
+        {"assets_ids", {token_id}},
+        {"type", "market"}
+    };
+
+    return message.dump();
+}
+
 void WebSocketClient::stream_market(
     const std::string& token_id
 ) const
 {
-    (void)token_id;
-
     constexpr char host[] =
         "ws-subscriptions-clob.polymarket.com";
 
@@ -78,7 +90,28 @@ void WebSocketClient::stream_market(
     std::cout
         << "Connected to "
         << host
-        << std::endl;
+        << '\n';
+
+    const std::string subscription_message =
+        build_subscription_message(token_id);
+
+    ws.write(
+        net::buffer(subscription_message)
+    );
+
+    std::cout
+        << "Subscription sent: "
+        << subscription_message
+        << '\n';
+
+    beast::flat_buffer buffer;
+
+    ws.read(buffer);
+
+    std::cout
+        << "Received message:\n"
+        << beast::make_printable(buffer.data())
+        << '\n';
 
     ws.close(
         websocket::close_code::normal
