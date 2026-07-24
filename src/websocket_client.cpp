@@ -175,6 +175,78 @@ void print_live_book(const OrderBook& book)
         << '\n';
 }
 
+void process_message(
+    const json& message,
+    OrderBook& book
+)
+{
+    if (!message.is_object()) {
+        std::cout
+            << "Ignored non-object WebSocket message\n";
+        return;
+    }
+
+    if (
+        !message.contains("event_type") ||
+        !message.at("event_type").is_string()
+    ) {
+        std::cout
+            << "Received message without event_type\n";
+        return;
+    }
+
+    const std::string event_type =
+        message.at("event_type")
+            .get<std::string>();
+
+    std::cout
+        << "\nReceived event: "
+        << event_type
+        << '\n';
+
+    if (event_type != "book") {
+        return;
+    }
+
+    std::vector<PriceLevel> bids =
+        parse_levels(message, "bids");
+
+    std::vector<PriceLevel> asks =
+        parse_levels(message, "asks");
+
+    book.replace_snapshot(
+        std::move(bids),
+        std::move(asks)
+    );
+
+    std::cout
+        << "========================\n";
+
+    print_live_book(book);
+}
+
+void process_payload(
+    const json& payload,
+    OrderBook& book
+)
+{
+    if (payload.is_array()) {
+        for (const json& message : payload) {
+            process_message(message, book);
+        }
+
+        return;
+    }
+
+    if (payload.is_object()) {
+        process_message(payload, book);
+        return;
+    }
+
+    std::cout
+        << "Ignored unsupported WebSocket payload\n";
+}
+
 } // namespace
 
 std::string WebSocketClient::build_subscription_message(
@@ -268,52 +340,17 @@ void WebSocketClient::stream_market(
                 buffer.data()
             );
 
-        const json messages =
-            json::parse(response);
+        try {
+            const json payload =
+                json::parse(response);
 
-        if (!messages.is_array()) {
-            continue;
+            process_payload(payload, book);
         }
-
-        if (messages.empty()) {
-            continue;
-        }
-
-        for (const json& message : messages) {
-            if (!message.is_object()) {
-                continue;
-            }
-
-            if (
-                !message.contains("event_type") ||
-                !message.at("event_type").is_string()
-            ) {
-                continue;
-            }
-
-            const std::string event_type =
-                message.at("event_type")
-                    .get<std::string>();
-
-            if (event_type != "book") {
-                continue;
-            }
-
-            std::vector<PriceLevel> bids =
-                parse_levels(message, "bids");
-
-            std::vector<PriceLevel> asks =
-                parse_levels(message, "asks");
-
-            book.replace_snapshot(
-                std::move(bids),
-                std::move(asks)
-            );
-
-            std::cout
-                << "\n========================\n";
-
-            print_live_book(book);
+        catch (const json::exception& error) {
+            std::cerr
+                << "Ignored invalid JSON message: "
+                << error.what()
+                << '\n';
         }
     }
 }
