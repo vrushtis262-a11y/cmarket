@@ -41,6 +41,7 @@ add_executable(
     cmarket
     src/main.cpp
     src/http_client.cpp
+    src/websocket_client.cpp
 )
 
 target_include_directories(

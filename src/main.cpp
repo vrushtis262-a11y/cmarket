@@ -1,5 +1,6 @@
 #include "http_client.hpp"
 #include "order_book.hpp"
+#include "websocket_client.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -217,13 +218,28 @@ void run_book_command(const std::string& token_id)
     print_order_book(book);
 }
 
+void run_stream_command(const std::string& token_id)
+{
+    if (token_id.empty()) {
+        throw std::invalid_argument(
+            "Token ID cannot be empty."
+        );
+    }
+
+    const WebSocketClient client;
+    client.stream_market(token_id);
+}
+
 void print_usage(const std::string& program_name)
 {
     std::cerr
         << "Usage:\n"
         << "  "
         << program_name
-        << " book <token-id>\n";
+        << " book <token-id>\n"
+        << "  "
+        << program_name
+        << " stream <token-id>\n";
 }
 
 } // namespace
@@ -241,6 +257,11 @@ int main(int argc, char* argv[])
 
         if (command == "book") {
             run_book_command(token_id);
+            return 0;
+        }
+
+        if (command == "stream") {
+            run_stream_command(token_id);
             return 0;
         }
 
