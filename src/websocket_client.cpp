@@ -15,7 +15,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cstddef>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -101,16 +105,103 @@ std::vector<PriceLevel> parse_levels(
     return parsed_levels;
 }
 
+constexpr std::size_t top_level_count = 10;
+
+std::string format_quantity(std::int64_t quantity)
+{
+    const std::int64_t whole =
+        quantity / OrderBook::ticks_per_unit;
+
+    const std::int64_t fractional =
+        quantity % OrderBook::ticks_per_unit;
+
+    std::ostringstream output;
+    output << whole;
+
+    if (fractional != 0) {
+        output
+            << '.'
+            << std::setw(6)
+            << std::setfill('0')
+            << fractional;
+
+        std::string value = output.str();
+
+        while (!value.empty() && value.back() == '0') {
+            value.pop_back();
+        }
+
+        return value;
+    }
+
+    return output.str();
+}
+
+void print_levels(
+    const std::vector<PriceLevel>& levels,
+    std::size_t maximum_levels
+)
+{
+    const std::size_t level_count =
+        std::min(maximum_levels, levels.size());
+
+    if (level_count == 0) {
+        std::cout << "  No levels\n";
+        return;
+    }
+
+    std::cout
+        << "  "
+        << std::left
+        << std::setw(10)
+        << "Price"
+        << "Quantity\n";
+
+    for (std::size_t index = 0; index < level_count; ++index) {
+        const PriceLevel& level = levels.at(index);
+
+        std::cout
+            << "  "
+            << std::left
+            << std::setw(10)
+            << OrderBook::format_price(
+                   level.price_ticks,
+                   3
+               )
+            << format_quantity(level.quantity)
+            << '\n';
+    }
+}
+
 void print_live_book(const OrderBook& book)
 {
     const auto best_bid = book.best_bid();
     const auto best_ask = book.best_ask();
 
-    std::cout << "Live order book state\n";
+    std::cout
+        << "=========== ORDER BOOK ===========\n"
+        << "ASKS (best first)\n";
+
+    print_levels(
+        book.asks(),
+        top_level_count
+    );
+
+    std::cout
+        << "----------------------------------\n"
+        << "BIDS (best first)\n";
+
+    print_levels(
+        book.bids(),
+        top_level_count
+    );
+
+    std::cout
+        << "----------------------------------\n";
 
     if (best_bid.has_value()) {
         std::cout
-            << "Best bid: "
+            << "Best bid:  "
             << OrderBook::format_price(
                    best_bid->price_ticks,
                    3
@@ -118,12 +209,12 @@ void print_live_book(const OrderBook& book)
             << '\n';
     }
     else {
-        std::cout << "Best bid: N/A\n";
+        std::cout << "Best bid:  N/A\n";
     }
 
     if (best_ask.has_value()) {
         std::cout
-            << "Best ask: "
+            << "Best ask:  "
             << OrderBook::format_price(
                    best_ask->price_ticks,
                    3
@@ -131,14 +222,14 @@ void print_live_book(const OrderBook& book)
             << '\n';
     }
     else {
-        std::cout << "Best ask: N/A\n";
+        std::cout << "Best ask:  N/A\n";
     }
 
     const auto spread = book.spread_ticks();
 
     if (spread.has_value()) {
         std::cout
-            << "Spread:   "
+            << "Spread:    "
             << OrderBook::format_price(
                    spread.value(),
                    3
@@ -146,14 +237,14 @@ void print_live_book(const OrderBook& book)
             << '\n';
     }
     else {
-        std::cout << "Spread:   N/A\n";
+        std::cout << "Spread:    N/A\n";
     }
 
     const auto mid_price = book.mid_price_ticks();
 
     if (mid_price.has_value()) {
         std::cout
-            << "Mid:      "
+            << "Mid:       "
             << OrderBook::format_price(
                    mid_price.value(),
                    3
@@ -161,8 +252,18 @@ void print_live_book(const OrderBook& book)
             << '\n';
     }
     else {
-        std::cout << "Mid:      N/A\n";
+        std::cout << "Mid:       N/A\n";
     }
+
+    std::cout
+        << "Bid depth: "
+        << format_quantity(book.bid_depth())
+        << '\n';
+
+    std::cout
+        << "Ask depth: "
+        << format_quantity(book.ask_depth())
+        << '\n';
 
     std::cout
         << "Bid levels: "
@@ -173,6 +274,9 @@ void print_live_book(const OrderBook& book)
         << "Ask levels: "
         << book.asks().size()
         << '\n';
+
+    std::cout
+        << "==================================\n";
 }
 
 void apply_price_change(
