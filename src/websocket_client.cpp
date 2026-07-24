@@ -106,7 +106,7 @@ void print_live_book(const OrderBook& book)
     const auto best_bid = book.best_bid();
     const auto best_ask = book.best_ask();
 
-    std::cout << "Live order book loaded\n";
+    std::cout << "Live order book state\n";
 
     if (best_bid.has_value()) {
         std::cout
@@ -175,8 +175,136 @@ void print_live_book(const OrderBook& book)
         << '\n';
 }
 
+void apply_price_change(
+    const json& change,
+    const std::string& token_id,
+    OrderBook& book
+)
+{
+    if (!change.is_object()) {
+        throw std::runtime_error(
+            "Each price change must be an object."
+        );
+    }
+
+    if (
+        !change.contains("asset_id") ||
+        !change.contains("price") ||
+        !change.contains("size") ||
+        !change.contains("side")
+    ) {
+        throw std::runtime_error(
+            "Price change is missing asset_id, "
+            "price, size, or side."
+        );
+    }
+
+    if (
+        !change.at("asset_id").is_string() ||
+        !change.at("price").is_string() ||
+        !change.at("size").is_string() ||
+        !change.at("side").is_string()
+    ) {
+        throw std::runtime_error(
+            "Price change fields must be strings."
+        );
+    }
+
+    const std::string asset_id =
+        change.at("asset_id")
+            .get<std::string>();
+
+    if (asset_id != token_id) {
+        return;
+    }
+
+    const std::int64_t price_ticks =
+        OrderBook::price_to_ticks(
+            change.at("price")
+                .get<std::string>()
+        );
+
+    const std::int64_t quantity =
+        OrderBook::quantity_to_fixed(
+            change.at("size")
+                .get<std::string>()
+        );
+
+    const std::string side =
+        change.at("side")
+            .get<std::string>();
+
+    if (side == "BUY") {
+        book.update_bid(
+            price_ticks,
+            quantity
+        );
+    }
+    else if (side == "SELL") {
+        book.update_ask(
+            price_ticks,
+            quantity
+        );
+    }
+    else {
+        throw std::runtime_error(
+            "Unsupported price-change side: " +
+            side
+        );
+    }
+
+    std::cout
+        << "Applied "
+        << side
+        << " update at "
+        << OrderBook::format_price(
+               price_ticks,
+               3
+           )
+        << " with size "
+        << change.at("size").get<std::string>()
+        << '\n';
+}
+
+void process_price_change(
+    const json& message,
+    const std::string& token_id,
+    OrderBook& book
+)
+{
+    if (!message.contains("price_changes")) {
+        throw std::runtime_error(
+            "price_change event is missing "
+            "price_changes."
+        );
+    }
+
+    const json& changes =
+        message.at("price_changes");
+
+    if (!changes.is_array()) {
+        throw std::runtime_error(
+            "price_changes must be an array."
+        );
+    }
+
+    for (const json& change : changes) {
+        apply_price_change(
+            change,
+            token_id,
+            book
+        );
+    }
+
+    std::cout
+        << "========================\n";
+
+    print_live_book(book);
+}
+
 void process_message(
     const json& message,
+    const std::string& token_id,
     OrderBook& book
 )
 {
@@ -204,42 +332,61 @@ void process_message(
         << event_type
         << '\n';
 
-    if (event_type != "book") {
+    if (event_type == "book") {
+        std::vector<PriceLevel> bids =
+            parse_levels(message, "bids");
+
+        std::vector<PriceLevel> asks =
+            parse_levels(message, "asks");
+
+        book.replace_snapshot(
+            std::move(bids),
+            std::move(asks)
+        );
+
+        std::cout
+            << "========================\n";
+
+        print_live_book(book);
         return;
     }
 
-    std::vector<PriceLevel> bids =
-        parse_levels(message, "bids");
+    if (event_type == "price_change") {
+        process_price_change(
+            message,
+            token_id,
+            book
+        );
 
-    std::vector<PriceLevel> asks =
-        parse_levels(message, "asks");
-
-    book.replace_snapshot(
-        std::move(bids),
-        std::move(asks)
-    );
-
-    std::cout
-        << "========================\n";
-
-    print_live_book(book);
+        return;
+    }
 }
 
 void process_payload(
     const json& payload,
+    const std::string& token_id,
     OrderBook& book
 )
 {
     if (payload.is_array()) {
         for (const json& message : payload) {
-            process_message(message, book);
+            process_message(
+                message,
+                token_id,
+                book
+            );
         }
 
         return;
     }
 
     if (payload.is_object()) {
-        process_message(payload, book);
+        process_message(
+            payload,
+            token_id,
+            book
+        );
+
         return;
     }
 
@@ -344,11 +491,21 @@ void WebSocketClient::stream_market(
             const json payload =
                 json::parse(response);
 
-            process_payload(payload, book);
+            process_payload(
+                payload,
+                token_id,
+                book
+            );
         }
         catch (const json::exception& error) {
             std::cerr
                 << "Ignored invalid JSON message: "
+                << error.what()
+                << '\n';
+        }
+        catch (const std::exception& error) {
+            std::cerr
+                << "Ignored invalid market event: "
                 << error.what()
                 << '\n';
         }
