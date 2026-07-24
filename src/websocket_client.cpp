@@ -15,7 +15,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -256,74 +255,65 @@ void WebSocketClient::stream_market(
     std::cout
         << "Subscription sent\n";
 
+    OrderBook book;
     beast::flat_buffer buffer;
 
-    ws.read(buffer);
+    while (true) {
+        buffer.consume(buffer.size());
 
-    const std::string response =
-        beast::buffers_to_string(
-            buffer.data()
-        );
+        ws.read(buffer);
 
-    const json messages =
-        json::parse(response);
+        const std::string response =
+            beast::buffers_to_string(
+                buffer.data()
+            );
 
-    if (!messages.is_array()) {
-        throw std::runtime_error(
-            "Expected a WebSocket JSON array."
-        );
+        const json messages =
+            json::parse(response);
+
+        if (!messages.is_array()) {
+            continue;
+        }
+
+        if (messages.empty()) {
+            continue;
+        }
+
+        for (const json& message : messages) {
+            if (!message.is_object()) {
+                continue;
+            }
+
+            if (
+                !message.contains("event_type") ||
+                !message.at("event_type").is_string()
+            ) {
+                continue;
+            }
+
+            const std::string event_type =
+                message.at("event_type")
+                    .get<std::string>();
+
+            if (event_type != "book") {
+                continue;
+            }
+
+            std::vector<PriceLevel> bids =
+                parse_levels(message, "bids");
+
+            std::vector<PriceLevel> asks =
+                parse_levels(message, "asks");
+
+            book.replace_snapshot(
+                std::move(bids),
+                std::move(asks)
+            );
+
+            std::cout
+                << "\n========================\n";
+
+            print_live_book(book);
+        }
     }
-
-    if (messages.empty()) {
-        throw std::runtime_error(
-            "WebSocket response array is empty."
-        );
-    }
-
-    const json& message = messages.front();
-
-    if (!message.is_object()) {
-        throw std::runtime_error(
-            "Expected a WebSocket message object."
-        );
-    }
-
-    if (
-        !message.contains("event_type") ||
-        !message.at("event_type").is_string()
-    ) {
-        throw std::runtime_error(
-            "WebSocket message is missing event_type."
-        );
-    }
-
-    const std::string event_type =
-        message.at("event_type")
-            .get<std::string>();
-
-    if (event_type != "book") {
-        throw std::runtime_error(
-            "Expected a book event, received: " +
-            event_type
-        );
-    }
-
-    std::vector<PriceLevel> bids =
-        parse_levels(message, "bids");
-
-    std::vector<PriceLevel> asks =
-        parse_levels(message, "asks");
-
-    OrderBook book;
-
-    book.replace_snapshot(
-        std::move(bids),
-        std::move(asks)
-    );
-
-    print_live_book(book);
-
-    ws.close(
-        websocket::close_code::normal
-    );
 }
