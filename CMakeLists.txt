@@ -11,12 +11,56 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(
+    CMARKET_ENABLE_SANITIZERS
+    "Enable AddressSanitizer and UndefinedBehaviorSanitizer"
+    OFF
+)
+
 include(FetchContent)
 include(CTest)
 
 find_package(Boost CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+
+function(cmarket_enable_warnings target_name)
+    target_compile_options(
+        ${target_name}
+        PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+    )
+endfunction()
+
+function(cmarket_enable_sanitizers target_name)
+    if(NOT CMARKET_ENABLE_SANITIZERS)
+        return()
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(
+            ${target_name}
+            PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(
+            ${target_name}
+            PRIVATE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
+    else()
+        message(
+            WARNING
+            "Sanitizers are only configured for Clang and GCC."
+        )
+    endif()
+endfunction()
 
 add_library(
     cmarket_order_book
@@ -29,13 +73,8 @@ target_include_directories(
     include
 )
 
-target_compile_options(
-    cmarket_order_book
-    PRIVATE
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+cmarket_enable_warnings(cmarket_order_book)
+cmarket_enable_sanitizers(cmarket_order_book)
 
 add_executable(
     cmarket
@@ -66,13 +105,8 @@ target_link_libraries(
     nlohmann_json::nlohmann_json
 )
 
-target_compile_options(
-    cmarket
-    PRIVATE
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+cmarket_enable_warnings(cmarket)
+cmarket_enable_sanitizers(cmarket)
 
 if(BUILD_TESTING)
     FetchContent_Declare(
@@ -103,13 +137,8 @@ if(BUILD_TESTING)
         GTest::gtest_main
     )
 
-    target_compile_options(
-        order_book_tests
-        PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-    )
+    cmarket_enable_warnings(order_book_tests)
+    cmarket_enable_sanitizers(order_book_tests)
 
     include(GoogleTest)
 
