@@ -113,6 +113,7 @@ if(BUILD_TESTING)
         googletest
         URL
         https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 
     set(
