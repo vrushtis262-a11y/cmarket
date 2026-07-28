@@ -346,6 +346,45 @@ std::int64_t calculate_depth(
     return depth;
 }
 
+std::optional<std::int64_t> calculate_vwap_ticks(
+    const std::vector<PriceLevel>& levels
+) noexcept
+{
+    if (levels.empty()) {
+        return std::nullopt;
+    }
+
+    long double weighted_price_total = 0.0L;
+    long double quantity_total = 0.0L;
+
+    for (const PriceLevel& level : levels) {
+        weighted_price_total +=
+            static_cast<long double>(level.price_ticks) *
+            static_cast<long double>(level.quantity);
+
+        quantity_total +=
+            static_cast<long double>(level.quantity);
+    }
+
+    if (quantity_total == 0.0L) {
+        return std::nullopt;
+    }
+
+    const long double vwap =
+        weighted_price_total / quantity_total;
+
+    if (
+        vwap >
+        static_cast<long double>(
+            std::numeric_limits<std::int64_t>::max()
+        )
+    ) {
+        return std::nullopt;
+    }
+
+    return static_cast<std::int64_t>(vwap);
+}
+
 } // namespace
 
 void OrderBook::replace_snapshot(
@@ -503,6 +542,18 @@ OrderBook::order_book_imbalance() const noexcept
 
     return (bid_total - ask_total) /
            combined_depth;
+}
+
+std::optional<std::int64_t>
+OrderBook::bid_vwap_ticks() const noexcept
+{
+    return calculate_vwap_ticks(bids_);
+}
+
+std::optional<std::int64_t>
+OrderBook::ask_vwap_ticks() const noexcept
+{
+    return calculate_vwap_ticks(asks_);
 }
 
 bool OrderBook::empty() const noexcept

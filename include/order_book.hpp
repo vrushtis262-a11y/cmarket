@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CMARKET_ORDER_BOOK_HPP
+#define CMARKET_ORDER_BOOK_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -31,40 +32,60 @@ public:
     );
 
     [[nodiscard]]
-    const std::vector<PriceLevel>& bids() const noexcept;
+    const std::vector<PriceLevel>&
+    bids() const noexcept;
 
     [[nodiscard]]
-    const std::vector<PriceLevel>& asks() const noexcept;
+    const std::vector<PriceLevel>&
+    asks() const noexcept;
 
     [[nodiscard]]
-    std::optional<PriceLevel> best_bid() const noexcept;
+    std::optional<PriceLevel>
+    best_bid() const noexcept;
 
     [[nodiscard]]
-    std::optional<PriceLevel> best_ask() const noexcept;
+    std::optional<PriceLevel>
+    best_ask() const noexcept;
 
     [[nodiscard]]
-    std::optional<std::int64_t> spread_ticks() const noexcept;
+    std::optional<std::int64_t>
+    spread_ticks() const noexcept;
 
     [[nodiscard]]
-    std::optional<std::int64_t> mid_price_ticks() const noexcept;
+    std::optional<std::int64_t>
+    mid_price_ticks() const noexcept;
 
     [[nodiscard]]
-    std::int64_t bid_depth() const noexcept;
+    std::int64_t
+    bid_depth() const noexcept;
 
     [[nodiscard]]
-    std::int64_t ask_depth() const noexcept;
+    std::int64_t
+    ask_depth() const noexcept;
 
     [[nodiscard]]
-    std::int64_t total_depth() const noexcept;
+    std::int64_t
+    total_depth() const noexcept;
 
     [[nodiscard]]
-    std::optional<double> order_book_imbalance() const noexcept;
+    std::optional<double>
+    order_book_imbalance() const noexcept;
+
+    [[nodiscard]]
+    std::optional<std::int64_t>
+    bid_vwap_ticks() const noexcept;
+
+    [[nodiscard]]
+    std::optional<std::int64_t>
+    ask_vwap_ticks() const noexcept;
 
     [[nodiscard]]
     bool empty() const noexcept;
 
     [[nodiscard]]
-    static std::int64_t price_to_ticks(const std::string& price);
+    static std::int64_t price_to_ticks(
+        const std::string& price
+    );
 
     [[nodiscard]]
     static std::int64_t quantity_to_fixed(
@@ -74,10 +95,12 @@ public:
     [[nodiscard]]
     static std::string format_price(
         std::int64_t price_ticks,
-        std::size_t decimal_places = 3
+        std::size_t decimal_places = 6
     );
 
 private:
     std::vector<PriceLevel> bids_;
     std::vector<PriceLevel> asks_;
 };
+
+#endif

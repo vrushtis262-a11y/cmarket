@@ -593,3 +593,97 @@ TEST(OrderBookTest, CalculatesNegativeOrderBookImbalance)
         1e-12
     );
 }
+
+TEST(OrderBookTest, ReturnsNoVwapForEmptySides)
+{
+    OrderBook book;
+
+    EXPECT_FALSE(book.bid_vwap_ticks().has_value());
+    EXPECT_FALSE(book.ask_vwap_ticks().has_value());
+}
+
+TEST(OrderBookTest, CalculatesBidVwap)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.500", "100"),
+            level("0.600", "300")
+        },
+        {}
+    );
+
+    const auto vwap = book.bid_vwap_ticks();
+
+    ASSERT_TRUE(vwap.has_value());
+
+    EXPECT_EQ(
+        vwap.value(),
+        OrderBook::price_to_ticks("0.575")
+    );
+}
+
+TEST(OrderBookTest, CalculatesAskVwap)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {},
+        {
+            level("0.600", "100"),
+            level("0.700", "300")
+        }
+    );
+
+    const auto vwap = book.ask_vwap_ticks();
+
+    ASSERT_TRUE(vwap.has_value());
+
+    EXPECT_EQ(
+        vwap.value(),
+        OrderBook::price_to_ticks("0.675")
+    );
+}
+
+TEST(OrderBookTest, CalculatesVwapAfterIncrementalUpdates)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.500", "100"),
+            level("0.600", "100")
+        },
+        {
+            level("0.700", "100"),
+            level("0.800", "100")
+        }
+    );
+
+    book.update_bid(
+        OrderBook::price_to_ticks("0.600"),
+        OrderBook::quantity_to_fixed("300")
+    );
+
+    book.update_ask(
+        OrderBook::price_to_ticks("0.700"),
+        OrderBook::quantity_to_fixed("300")
+    );
+
+    const auto bid_vwap = book.bid_vwap_ticks();
+    const auto ask_vwap = book.ask_vwap_ticks();
+
+    ASSERT_TRUE(bid_vwap.has_value());
+    ASSERT_TRUE(ask_vwap.has_value());
+
+    EXPECT_EQ(
+        bid_vwap.value(),
+        OrderBook::price_to_ticks("0.575")
+    );
+
+    EXPECT_EQ(
+        ask_vwap.value(),
+        OrderBook::price_to_ticks("0.725")
+    );
+}
