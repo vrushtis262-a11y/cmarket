@@ -165,6 +165,7 @@ TEST(OrderBookTest, HandlesEmptyBook)
     EXPECT_EQ(book.bid_depth(), 0);
     EXPECT_EQ(book.ask_depth(), 0);
     EXPECT_EQ(book.total_depth(), 0);
+    EXPECT_FALSE(book.order_book_imbalance().has_value());
 }
 
 TEST(OrderBookTest, HandlesEmptyBidSide)
@@ -183,6 +184,11 @@ TEST(OrderBookTest, HandlesEmptyBidSide)
     EXPECT_TRUE(book.best_ask().has_value());
     EXPECT_FALSE(book.spread_ticks().has_value());
     EXPECT_FALSE(book.mid_price_ticks().has_value());
+
+    const auto imbalance = book.order_book_imbalance();
+
+    ASSERT_TRUE(imbalance.has_value());
+    EXPECT_DOUBLE_EQ(imbalance.value(), -1.0);
 }
 
 TEST(OrderBookTest, HandlesEmptyAskSide)
@@ -201,6 +207,11 @@ TEST(OrderBookTest, HandlesEmptyAskSide)
     EXPECT_FALSE(book.best_ask().has_value());
     EXPECT_FALSE(book.spread_ticks().has_value());
     EXPECT_FALSE(book.mid_price_ticks().has_value());
+
+    const auto imbalance = book.order_book_imbalance();
+
+    ASSERT_TRUE(imbalance.has_value());
+    EXPECT_DOUBLE_EQ(imbalance.value(), 1.0);
 }
 
 TEST(OrderBookTest, AggregatesDuplicatePriceLevels)
@@ -509,5 +520,76 @@ TEST(OrderBookTest, RejectsNegativeIncrementalUpdates)
     EXPECT_THROW(
         book.update_ask(1, -1),
         std::invalid_argument
+    );
+}
+
+TEST(OrderBookTest, CalculatesBalancedOrderBookImbalance)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "40"),
+            level("0.520", "60")
+        },
+        {
+            level("0.540", "25"),
+            level("0.550", "75")
+        }
+    );
+
+    const auto imbalance = book.order_book_imbalance();
+
+    ASSERT_TRUE(imbalance.has_value());
+    EXPECT_DOUBLE_EQ(imbalance.value(), 0.0);
+}
+
+TEST(OrderBookTest, CalculatesPositiveOrderBookImbalance)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "120"),
+            level("0.520", "80")
+        },
+        {
+            level("0.540", "25"),
+            level("0.550", "75")
+        }
+    );
+
+    const auto imbalance = book.order_book_imbalance();
+
+    ASSERT_TRUE(imbalance.has_value());
+    EXPECT_NEAR(
+        imbalance.value(),
+        1.0 / 3.0,
+        1e-12
+    );
+}
+
+TEST(OrderBookTest, CalculatesNegativeOrderBookImbalance)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "25"),
+            level("0.520", "75")
+        },
+        {
+            level("0.540", "120"),
+            level("0.550", "80")
+        }
+    );
+
+    const auto imbalance = book.order_book_imbalance();
+
+    ASSERT_TRUE(imbalance.has_value());
+    EXPECT_NEAR(
+        imbalance.value(),
+        -1.0 / 3.0,
+        1e-12
     );
 }

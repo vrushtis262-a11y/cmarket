@@ -485,6 +485,26 @@ OrderBook::total_depth() const noexcept
     return bid_total + ask_total;
 }
 
+std::optional<double>
+OrderBook::order_book_imbalance() const noexcept
+{
+    const double bid_total =
+        static_cast<double>(bid_depth());
+
+    const double ask_total =
+        static_cast<double>(ask_depth());
+
+    const double combined_depth =
+        bid_total + ask_total;
+
+    if (combined_depth == 0.0) {
+        return std::nullopt;
+    }
+
+    return (bid_total - ask_total) /
+           combined_depth;
+}
+
 bool OrderBook::empty() const noexcept
 {
     return bids_.empty() && asks_.empty();

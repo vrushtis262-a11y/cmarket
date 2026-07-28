@@ -58,6 +58,9 @@ public:
     std::int64_t total_depth() const noexcept;
 
     [[nodiscard]]
+    std::optional<double> order_book_imbalance() const noexcept;
+
+    [[nodiscard]]
     bool empty() const noexcept;
 
     [[nodiscard]]
