@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <csignal>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -34,6 +35,14 @@ using tcp = net::ip::tcp;
 using json = nlohmann::json;
 
 namespace {
+
+volatile std::sig_atomic_t shutdown_requested = 0;
+
+void handle_shutdown_signal(int)
+{
+    shutdown_requested = 1;
+}
+
 
 std::vector<PriceLevel> parse_levels(
     const json& message,
@@ -581,10 +590,39 @@ void WebSocketClient::stream_market(
     OrderBook book;
     beast::flat_buffer buffer;
 
-    while (true) {
+    shutdown_requested = 0;
+
+    const auto previous_sigint_handler =
+        std::signal(SIGINT, handle_shutdown_signal);
+
+    const auto previous_sigterm_handler =
+        std::signal(SIGTERM, handle_shutdown_signal);
+
+    std::cout
+        << "Press Ctrl+C to stop streaming.\n";
+
+    while (shutdown_requested == 0) {
         buffer.consume(buffer.size());
 
-        ws.read(buffer);
+        beast::error_code error;
+        ws.read(buffer, error);
+
+        if (shutdown_requested != 0) {
+            break;
+        }
+
+        if (error == websocket::error::closed) {
+            std::cout
+                << "WebSocket connection closed by server.\n";
+            break;
+        }
+
+        if (error) {
+            std::signal(SIGINT, previous_sigint_handler);
+            std::signal(SIGTERM, previous_sigterm_handler);
+
+            throw beast::system_error(error);
+        }
 
         const std::string response =
             beast::buffers_to_string(
@@ -614,4 +652,32 @@ void WebSocketClient::stream_market(
                 << '\n';
         }
     }
+
+    std::cout
+        << "\nShutdown requested. Closing WebSocket...\n";
+
+    if (ws.is_open()) {
+        beast::error_code close_error;
+
+        ws.close(
+            websocket::close_code::normal,
+            close_error
+        );
+
+        if (
+            close_error &&
+            close_error != websocket::error::closed
+        ) {
+            std::cerr
+                << "WebSocket close warning: "
+                << close_error.message()
+                << '\n';
+        }
+    }
+
+    std::signal(SIGINT, previous_sigint_handler);
+    std::signal(SIGTERM, previous_sigterm_handler);
+
+    std::cout
+        << "WebSocket stream stopped cleanly.\n";
 }
