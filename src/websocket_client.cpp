@@ -420,7 +420,8 @@ void process_price_change(
 void process_message(
     const json& message,
     const std::string& token_id,
-    OrderBook& book
+    OrderBook& book,
+    bool& snapshot_received
 )
 {
     if (!message.is_object()) {
@@ -462,11 +463,20 @@ void process_message(
         std::cout
             << "========================\n";
 
+        snapshot_received = true;
+
         print_live_book(book);
         return;
     }
 
     if (event_type == "price_change") {
+        if (!snapshot_received) {
+            std::cout
+                << "Ignored price_change before initial "
+                << "book snapshot.\n";
+            return;
+        }
+
         process_price_change(
             message,
             token_id,
@@ -480,7 +490,8 @@ void process_message(
 void process_payload(
     const json& payload,
     const std::string& token_id,
-    OrderBook& book
+    OrderBook& book,
+    bool& snapshot_received
 )
 {
     if (payload.is_array()) {
@@ -488,7 +499,8 @@ void process_payload(
             process_message(
                 message,
                 token_id,
-                book
+                book,
+                snapshot_received
             );
         }
 
@@ -499,7 +511,8 @@ void process_payload(
         process_message(
             payload,
             token_id,
-            book
+            book,
+            snapshot_received
         );
 
         return;
@@ -605,6 +618,7 @@ void WebSocketClient::stream_market(
                 << "Subscription sent\n";
 
             OrderBook book;
+            bool snapshot_received = false;
             beast::flat_buffer buffer;
 
             while (shutdown_requested == 0) {
@@ -644,7 +658,8 @@ void WebSocketClient::stream_market(
                     process_payload(
                         payload,
                         token_id,
-                        book
+                        book,
+                        snapshot_received
                     );
                 }
                 catch (const json::exception& error) {
