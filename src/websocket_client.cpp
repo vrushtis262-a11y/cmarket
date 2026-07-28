@@ -16,6 +16,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <csignal>
 #include <iomanip>
@@ -23,6 +24,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -532,63 +534,7 @@ void WebSocketClient::stream_market(
 
     constexpr char target[] = "/ws/market";
 
-    net::io_context io_context;
-
-    ssl::context ssl_context(
-        ssl::context::tls_client
-    );
-
-    ssl_context.set_default_verify_paths();
-
-    tcp::resolver resolver(io_context);
-
-    websocket::stream<
-        beast::ssl_stream<
-            beast::tcp_stream
-        >
-    > ws(
-        io_context,
-        ssl_context
-    );
-
-    if (!SSL_set_tlsext_host_name(
-            ws.next_layer().native_handle(),
-            host
-        )) {
-        throw std::runtime_error(
-            "Failed to set TLS hostname."
-        );
-    }
-
-    const auto endpoints =
-        resolver.resolve(host, port);
-
-    beast::get_lowest_layer(ws)
-        .connect(endpoints);
-
-    ws.next_layer().handshake(
-        ssl::stream_base::client
-    );
-
-    ws.handshake(host, target);
-
-    std::cout
-        << "Connected to "
-        << host
-        << '\n';
-
-    const std::string subscription_message =
-        build_subscription_message(token_id);
-
-    ws.write(
-        net::buffer(subscription_message)
-    );
-
-    std::cout
-        << "Subscription sent\n";
-
-    OrderBook book;
-    beast::flat_buffer buffer;
+    constexpr int reconnect_delay_seconds = 3;
 
     shutdown_requested = 0;
 
@@ -598,80 +544,175 @@ void WebSocketClient::stream_market(
     const auto previous_sigterm_handler =
         std::signal(SIGTERM, handle_shutdown_signal);
 
+    const std::string subscription_message =
+        build_subscription_message(token_id);
+
     std::cout
         << "Press Ctrl+C to stop streaming.\n";
 
     while (shutdown_requested == 0) {
-        buffer.consume(buffer.size());
+        try {
+            net::io_context io_context;
 
-        beast::error_code error;
-        ws.read(buffer, error);
+            ssl::context ssl_context(
+                ssl::context::tls_client
+            );
+
+            ssl_context.set_default_verify_paths();
+
+            tcp::resolver resolver(io_context);
+
+            websocket::stream<
+                beast::ssl_stream<
+                    beast::tcp_stream
+                >
+            > ws(
+                io_context,
+                ssl_context
+            );
+
+            if (!SSL_set_tlsext_host_name(
+                    ws.next_layer().native_handle(),
+                    host
+                )) {
+                throw std::runtime_error(
+                    "Failed to set TLS hostname."
+                );
+            }
+
+            const auto endpoints =
+                resolver.resolve(host, port);
+
+            beast::get_lowest_layer(ws)
+                .connect(endpoints);
+
+            ws.next_layer().handshake(
+                ssl::stream_base::client
+            );
+
+            ws.handshake(host, target);
+
+            std::cout
+                << "Connected to "
+                << host
+                << '\n';
+
+            ws.write(
+                net::buffer(subscription_message)
+            );
+
+            std::cout
+                << "Subscription sent\n";
+
+            OrderBook book;
+            beast::flat_buffer buffer;
+
+            while (shutdown_requested == 0) {
+                buffer.consume(buffer.size());
+
+                beast::error_code error;
+                ws.read(buffer, error);
+
+                if (shutdown_requested != 0) {
+                    break;
+                }
+
+                if (error == websocket::error::closed) {
+                    std::cerr
+                        << "WebSocket connection closed "
+                        << "by server.\n";
+                    break;
+                }
+
+                if (error) {
+                    std::cerr
+                        << "WebSocket read error: "
+                        << error.message()
+                        << '\n';
+                    break;
+                }
+
+                const std::string response =
+                    beast::buffers_to_string(
+                        buffer.data()
+                    );
+
+                try {
+                    const json payload =
+                        json::parse(response);
+
+                    process_payload(
+                        payload,
+                        token_id,
+                        book
+                    );
+                }
+                catch (const json::exception& error) {
+                    std::cerr
+                        << "Ignored invalid JSON message: "
+                        << error.what()
+                        << '\n';
+                }
+                catch (const std::exception& error) {
+                    std::cerr
+                        << "Ignored invalid market event: "
+                        << error.what()
+                        << '\n';
+                }
+            }
+
+            if (shutdown_requested != 0) {
+                std::cout
+                    << "\nShutdown requested. "
+                    << "Closing WebSocket...\n";
+            }
+
+            if (ws.is_open()) {
+                beast::error_code close_error;
+
+                ws.close(
+                    websocket::close_code::normal,
+                    close_error
+                );
+
+                if (
+                    close_error &&
+                    close_error != websocket::error::closed
+                ) {
+                    std::cerr
+                        << "WebSocket close warning: "
+                        << close_error.message()
+                        << '\n';
+                }
+            }
+        }
+        catch (const std::exception& error) {
+            if (shutdown_requested == 0) {
+                std::cerr
+                    << "WebSocket connection error: "
+                    << error.what()
+                    << '\n';
+            }
+        }
 
         if (shutdown_requested != 0) {
             break;
         }
 
-        if (error == websocket::error::closed) {
-            std::cout
-                << "WebSocket connection closed by server.\n";
-            break;
-        }
+        std::cout
+            << "Reconnecting in "
+            << reconnect_delay_seconds
+            << " seconds...\n";
 
-        if (error) {
-            std::signal(SIGINT, previous_sigint_handler);
-            std::signal(SIGTERM, previous_sigterm_handler);
-
-            throw beast::system_error(error);
-        }
-
-        const std::string response =
-            beast::buffers_to_string(
-                buffer.data()
-            );
-
-        try {
-            const json payload =
-                json::parse(response);
-
-            process_payload(
-                payload,
-                token_id,
-                book
-            );
-        }
-        catch (const json::exception& error) {
-            std::cerr
-                << "Ignored invalid JSON message: "
-                << error.what()
-                << '\n';
-        }
-        catch (const std::exception& error) {
-            std::cerr
-                << "Ignored invalid market event: "
-                << error.what()
-                << '\n';
-        }
-    }
-
-    std::cout
-        << "\nShutdown requested. Closing WebSocket...\n";
-
-    if (ws.is_open()) {
-        beast::error_code close_error;
-
-        ws.close(
-            websocket::close_code::normal,
-            close_error
-        );
-
-        if (
-            close_error &&
-            close_error != websocket::error::closed
+        for (
+            int second = 0;
+            second < reconnect_delay_seconds &&
+            shutdown_requested == 0;
+            ++second
         ) {
-            std::cerr
-                << "WebSocket close warning: "
-                << close_error.message()
-                << '\n';
+            std::this_thread::sleep_for(
+                std::chrono::seconds(1)
+            );
         }
     }
 
