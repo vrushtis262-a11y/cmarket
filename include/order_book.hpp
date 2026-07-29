@@ -80,6 +80,10 @@ public:
     ask_vwap_ticks() const noexcept;
 
     [[nodiscard]]
+    std::optional<std::int64_t>
+    microprice_ticks() const noexcept;
+
+    [[nodiscard]]
     bool empty() const noexcept;
 
     [[nodiscard]]

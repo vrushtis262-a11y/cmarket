@@ -687,3 +687,135 @@ TEST(OrderBookTest, CalculatesVwapAfterIncrementalUpdates)
         OrderBook::price_to_ticks("0.725")
     );
 }
+
+TEST(OrderBookTest, ReturnsNoMicropriceForIncompleteBook)
+{
+    OrderBook empty_book;
+
+    EXPECT_FALSE(
+        empty_book.microprice_ticks().has_value()
+    );
+
+    OrderBook bid_only_book;
+
+    bid_only_book.replace_snapshot(
+        {
+            level("0.530", "100")
+        },
+        {}
+    );
+
+    EXPECT_FALSE(
+        bid_only_book.microprice_ticks().has_value()
+    );
+
+    OrderBook ask_only_book;
+
+    ask_only_book.replace_snapshot(
+        {},
+        {
+            level("0.540", "100")
+        }
+    );
+
+    EXPECT_FALSE(
+        ask_only_book.microprice_ticks().has_value()
+    );
+}
+
+TEST(OrderBookTest, CalculatesBalancedMicroprice)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "100")
+        },
+        {
+            level("0.540", "100")
+        }
+    );
+
+    const auto microprice = book.microprice_ticks();
+
+    ASSERT_TRUE(microprice.has_value());
+
+    EXPECT_EQ(
+        microprice.value(),
+        OrderBook::price_to_ticks("0.535")
+    );
+}
+
+TEST(OrderBookTest, WeightsMicropriceTowardAskWithLargerBidQuantity)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "300")
+        },
+        {
+            level("0.540", "100")
+        }
+    );
+
+    const auto microprice = book.microprice_ticks();
+
+    ASSERT_TRUE(microprice.has_value());
+
+    EXPECT_EQ(
+        microprice.value(),
+        OrderBook::price_to_ticks("0.5375")
+    );
+}
+
+TEST(OrderBookTest, WeightsMicropriceTowardBidWithLargerAskQuantity)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "100")
+        },
+        {
+            level("0.540", "300")
+        }
+    );
+
+    const auto microprice = book.microprice_ticks();
+
+    ASSERT_TRUE(microprice.has_value());
+
+    EXPECT_EQ(
+        microprice.value(),
+        OrderBook::price_to_ticks("0.5325")
+    );
+}
+
+TEST(OrderBookTest, RecalculatesMicropriceAfterIncrementalUpdate)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "100")
+        },
+        {
+            level("0.540", "100")
+        }
+    );
+
+    book.update_bid(
+        OrderBook::price_to_ticks("0.530"),
+        OrderBook::quantity_to_fixed("300")
+    );
+
+    const auto microprice = book.microprice_ticks();
+
+    ASSERT_TRUE(microprice.has_value());
+
+    EXPECT_EQ(
+        microprice.value(),
+        OrderBook::price_to_ticks("0.5375")
+    );
+}

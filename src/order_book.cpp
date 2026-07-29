@@ -556,6 +556,45 @@ OrderBook::ask_vwap_ticks() const noexcept
     return calculate_vwap_ticks(asks_);
 }
 
+std::optional<std::int64_t>
+OrderBook::microprice_ticks() const noexcept
+{
+    if (bids_.empty() || asks_.empty()) {
+        return std::nullopt;
+    }
+
+    const PriceLevel& bid = bids_.front();
+    const PriceLevel& ask = asks_.front();
+
+    const long double combined_quantity =
+        static_cast<long double>(bid.quantity) +
+        static_cast<long double>(ask.quantity);
+
+    if (combined_quantity == 0.0L) {
+        return std::nullopt;
+    }
+
+    const long double weighted_price =
+        static_cast<long double>(bid.price_ticks) *
+            static_cast<long double>(ask.quantity) +
+        static_cast<long double>(ask.price_ticks) *
+            static_cast<long double>(bid.quantity);
+
+    const long double microprice =
+        weighted_price / combined_quantity;
+
+    if (
+        microprice >
+        static_cast<long double>(
+            std::numeric_limits<std::int64_t>::max()
+        )
+    ) {
+        return std::nullopt;
+    }
+
+    return static_cast<std::int64_t>(microprice);
+}
+
 bool OrderBook::empty() const noexcept
 {
     return bids_.empty() && asks_.empty();
