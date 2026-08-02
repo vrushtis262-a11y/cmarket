@@ -76,6 +76,26 @@ target_include_directories(
 cmarket_enable_warnings(cmarket_order_book)
 cmarket_enable_sanitizers(cmarket_order_book)
 
+add_library(
+    cmarket_matching_engine
+    src/matching_engine.cpp
+)
+
+target_include_directories(
+    cmarket_matching_engine
+    PUBLIC
+    include
+)
+
+target_link_libraries(
+    cmarket_matching_engine
+    PUBLIC
+    cmarket_order_book
+)
+
+cmarket_enable_warnings(cmarket_matching_engine)
+cmarket_enable_sanitizers(cmarket_matching_engine)
+
 add_executable(
     cmarket
     src/main.cpp
@@ -99,6 +119,7 @@ target_link_libraries(
     cmarket
     PRIVATE
     cmarket_order_book
+    cmarket_matching_engine
     Boost::headers
     OpenSSL::SSL
     OpenSSL::Crypto
@@ -141,7 +162,28 @@ if(BUILD_TESTING)
     cmarket_enable_warnings(order_book_tests)
     cmarket_enable_sanitizers(order_book_tests)
 
+    add_executable(
+        execution_tests
+        tests/execution_tests.cpp
+    )
+
+    target_include_directories(
+        execution_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        execution_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(execution_tests)
+    cmarket_enable_sanitizers(execution_tests)
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
+    gtest_discover_tests(execution_tests)
 endif()
