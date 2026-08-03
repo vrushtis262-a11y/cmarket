@@ -226,3 +226,125 @@ TEST(MatchingEngineTest, ConsumesAllAvailableBidsWhenLiquidityIsInsufficient)
 
     EXPECT_TRUE(order_book.bids().empty());
 }
+
+TEST(MatchingEngineTest, RecordsTradesAcrossMultipleExecutions)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {
+            PriceLevel{
+                .price_ticks = 520'000,
+                .quantity = 40
+            }
+        },
+        {
+            PriceLevel{
+                .price_ticks = 540'000,
+                .quantity = 30
+            }
+        }
+    );
+
+    MatchingEngine engine(order_book);
+
+    const ExecutionResult buy_result =
+        engine.execute_market_buy(20);
+
+    const ExecutionResult sell_result =
+        engine.execute_market_sell(25);
+
+    ASSERT_EQ(buy_result.trades.size(), 1U);
+    ASSERT_EQ(sell_result.trades.size(), 1U);
+
+    const std::vector<Trade>& history =
+        engine.trade_history();
+
+    ASSERT_EQ(history.size(), 2U);
+
+    EXPECT_EQ(history[0].aggressor_side, OrderSide::Buy);
+    EXPECT_EQ(history[0].price_ticks, 540'000);
+    EXPECT_EQ(history[0].quantity, 20);
+
+    EXPECT_EQ(history[1].aggressor_side, OrderSide::Sell);
+    EXPECT_EQ(history[1].price_ticks, 520'000);
+    EXPECT_EQ(history[1].quantity, 25);
+}
+
+TEST(MatchingEngineTest, RecordsEveryTradeFromMultiLevelExecution)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {},
+        {
+            PriceLevel{
+                .price_ticks = 540'000,
+                .quantity = 20
+            },
+            PriceLevel{
+                .price_ticks = 550'000,
+                .quantity = 30
+            }
+        }
+    );
+
+    MatchingEngine engine(order_book);
+
+    const ExecutionResult result =
+        engine.execute_market_buy(40);
+
+    ASSERT_EQ(result.trades.size(), 2U);
+
+    const std::vector<Trade>& history =
+        engine.trade_history();
+
+    ASSERT_EQ(history.size(), 2U);
+
+    EXPECT_EQ(history[0].aggressor_side, OrderSide::Buy);
+    EXPECT_EQ(history[0].price_ticks, 540'000);
+    EXPECT_EQ(history[0].quantity, 20);
+
+    EXPECT_EQ(history[1].aggressor_side, OrderSide::Buy);
+    EXPECT_EQ(history[1].price_ticks, 550'000);
+    EXPECT_EQ(history[1].quantity, 20);
+}
+
+TEST(MatchingEngineTest, ClearsTradeHistory)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {
+            PriceLevel{
+                .price_ticks = 520'000,
+                .quantity = 50
+            }
+        },
+        {}
+    );
+
+    MatchingEngine engine(order_book);
+
+    engine.execute_market_sell(20);
+
+    ASSERT_EQ(engine.trade_history().size(), 1U);
+
+    engine.clear_trade_history();
+
+    EXPECT_TRUE(engine.trade_history().empty());
+}
+
+TEST(MatchingEngineTest, DoesNotRecordTradeForUnfilledOrder)
+{
+    OrderBook order_book;
+
+    MatchingEngine engine(order_book);
+
+    const ExecutionResult result =
+        engine.execute_market_buy(50);
+
+    EXPECT_TRUE(result.unfilled());
+    EXPECT_TRUE(result.trades.empty());
+    EXPECT_TRUE(engine.trade_history().empty());
+}

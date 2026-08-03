@@ -4,10 +4,14 @@
 #include <limits>
 #include <stdexcept>
 
-namespace {
+MatchingEngine::MatchingEngine(
+    OrderBook& order_book
+) noexcept
+    : order_book_(order_book)
+{
+}
 
-ExecutionResult execute_market_order(
-    OrderBook& order_book,
+ExecutionResult MatchingEngine::execute_market_order(
     OrderSide side,
     std::int64_t quantity
 )
@@ -32,8 +36,8 @@ ExecutionResult execute_market_order(
     while (result.remaining_quantity > 0) {
         const std::vector<PriceLevel>& levels =
             side == OrderSide::Buy
-                ? order_book.asks()
-                : order_book.bids();
+                ? order_book_.asks()
+                : order_book_.bids();
 
         if (levels.empty()) {
             break;
@@ -47,13 +51,14 @@ ExecutionResult execute_market_order(
                 best_level.quantity
             );
 
-        result.trades.push_back(
-            Trade{
-                .aggressor_side = side,
-                .price_ticks = best_level.price_ticks,
-                .quantity = executed_at_level
-            }
-        );
+        const Trade trade{
+            .aggressor_side = side,
+            .price_ticks = best_level.price_ticks,
+            .quantity = executed_at_level
+        };
+
+        result.trades.push_back(trade);
+        trade_history_.push_back(trade);
 
         result.executed_quantity += executed_at_level;
         result.remaining_quantity -= executed_at_level;
@@ -70,13 +75,13 @@ ExecutionResult execute_market_order(
             best_level.quantity - executed_at_level;
 
         if (side == OrderSide::Buy) {
-            order_book.update_ask(
+            order_book_.update_ask(
                 best_level.price_ticks,
                 remaining_at_level
             );
         }
         else {
-            order_book.update_bid(
+            order_book_.update_bid(
                 best_level.price_ticks,
                 remaining_at_level
             );
@@ -110,21 +115,11 @@ ExecutionResult execute_market_order(
     return result;
 }
 
-} // namespace
-
-MatchingEngine::MatchingEngine(
-    OrderBook& order_book
-) noexcept
-    : order_book_(order_book)
-{
-}
-
 ExecutionResult MatchingEngine::execute_market_buy(
     std::int64_t quantity
 )
 {
     return execute_market_order(
-        order_book_,
         OrderSide::Buy,
         quantity
     );
@@ -135,8 +130,18 @@ ExecutionResult MatchingEngine::execute_market_sell(
 )
 {
     return execute_market_order(
-        order_book_,
         OrderSide::Sell,
         quantity
     );
+}
+
+const std::vector<Trade>&
+MatchingEngine::trade_history() const noexcept
+{
+    return trade_history_;
+}
+
+void MatchingEngine::clear_trade_history() noexcept
+{
+    trade_history_.clear();
 }

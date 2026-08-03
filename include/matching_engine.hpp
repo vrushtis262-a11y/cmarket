@@ -5,6 +5,7 @@
 #include "order_book.hpp"
 
 #include <cstdint>
+#include <vector>
 
 class MatchingEngine {
 public:
@@ -20,8 +21,21 @@ public:
         std::int64_t quantity
     );
 
+    [[nodiscard]]
+    const std::vector<Trade>&
+    trade_history() const noexcept;
+
+    void clear_trade_history() noexcept;
+
 private:
+    [[nodiscard]]
+    ExecutionResult execute_market_order(
+        OrderSide side,
+        std::int64_t quantity
+    );
+
     OrderBook& order_book_;
+    std::vector<Trade> trade_history_;
 };
 
 #endif
