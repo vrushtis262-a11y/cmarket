@@ -118,7 +118,6 @@ target_compile_definitions(
 target_link_libraries(
     cmarket
     PRIVATE
-    cmarket_order_book
     cmarket_matching_engine
     Boost::headers
     OpenSSL::SSL
@@ -182,8 +181,24 @@ if(BUILD_TESTING)
     cmarket_enable_warnings(execution_tests)
     cmarket_enable_sanitizers(execution_tests)
 
+    add_executable(
+        matching_engine_tests
+        tests/matching_engine_tests.cpp
+    )
+
+    target_link_libraries(
+        matching_engine_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(matching_engine_tests)
+    cmarket_enable_sanitizers(matching_engine_tests)
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
     gtest_discover_tests(execution_tests)
+    gtest_discover_tests(matching_engine_tests)
 endif()

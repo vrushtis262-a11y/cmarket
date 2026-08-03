@@ -4,25 +4,22 @@
 #include <limits>
 #include <stdexcept>
 
-MatchingEngine::MatchingEngine(
-    OrderBook& order_book
-) noexcept
-    : order_book_(order_book)
-{
-}
+namespace {
 
-ExecutionResult MatchingEngine::execute_market_buy(
+ExecutionResult execute_market_order(
+    OrderBook& order_book,
+    OrderSide side,
     std::int64_t quantity
 )
 {
     if (quantity <= 0) {
         throw std::invalid_argument(
-            "Market buy quantity must be positive."
+            "Market order quantity must be positive."
         );
     }
 
     ExecutionResult result{
-        .side = OrderSide::Buy,
+        .side = side,
         .requested_quantity = quantity,
         .executed_quantity = 0,
         .remaining_quantity = quantity,
@@ -32,23 +29,28 @@ ExecutionResult MatchingEngine::execute_market_buy(
 
     long double weighted_price_total = 0.0L;
 
-    while (
-        result.remaining_quantity > 0 &&
-        !order_book_.asks().empty()
-    ) {
-        const PriceLevel best_ask =
-            order_book_.asks().front();
+    while (result.remaining_quantity > 0) {
+        const std::vector<PriceLevel>& levels =
+            side == OrderSide::Buy
+                ? order_book.asks()
+                : order_book.bids();
+
+        if (levels.empty()) {
+            break;
+        }
+
+        const PriceLevel best_level = levels.front();
 
         const std::int64_t executed_at_level =
             std::min(
                 result.remaining_quantity,
-                best_ask.quantity
+                best_level.quantity
             );
 
         result.trades.push_back(
             Trade{
-                .aggressor_side = OrderSide::Buy,
-                .price_ticks = best_ask.price_ticks,
+                .aggressor_side = side,
+                .price_ticks = best_level.price_ticks,
                 .quantity = executed_at_level
             }
         );
@@ -58,19 +60,27 @@ ExecutionResult MatchingEngine::execute_market_buy(
 
         weighted_price_total +=
             static_cast<long double>(
-                best_ask.price_ticks
+                best_level.price_ticks
             ) *
             static_cast<long double>(
                 executed_at_level
             );
 
         const std::int64_t remaining_at_level =
-            best_ask.quantity - executed_at_level;
+            best_level.quantity - executed_at_level;
 
-        order_book_.update_ask(
-            best_ask.price_ticks,
-            remaining_at_level
-        );
+        if (side == OrderSide::Buy) {
+            order_book.update_ask(
+                best_level.price_ticks,
+                remaining_at_level
+            );
+        }
+        else {
+            order_book.update_bid(
+                best_level.price_ticks,
+                remaining_at_level
+            );
+        }
     }
 
     if (result.executed_quantity > 0) {
@@ -98,4 +108,35 @@ ExecutionResult MatchingEngine::execute_market_buy(
     }
 
     return result;
+}
+
+} // namespace
+
+MatchingEngine::MatchingEngine(
+    OrderBook& order_book
+) noexcept
+    : order_book_(order_book)
+{
+}
+
+ExecutionResult MatchingEngine::execute_market_buy(
+    std::int64_t quantity
+)
+{
+    return execute_market_order(
+        order_book_,
+        OrderSide::Buy,
+        quantity
+    );
+}
+
+ExecutionResult MatchingEngine::execute_market_sell(
+    std::int64_t quantity
+)
+{
+    return execute_market_order(
+        order_book_,
+        OrderSide::Sell,
+        quantity
+    );
 }

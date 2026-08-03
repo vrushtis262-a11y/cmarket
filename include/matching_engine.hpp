@@ -15,6 +15,11 @@ public:
         std::int64_t quantity
     );
 
+    [[nodiscard]]
+    ExecutionResult execute_market_sell(
+        std::int64_t quantity
+    );
+
 private:
     OrderBook& order_book_;
 };
