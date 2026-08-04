@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 TEST(MatchingEngineTest, ExecutesSingleLevelMarketSell)
 {
     OrderBook order_book;
@@ -326,8 +328,10 @@ TEST(MatchingEngineTest, ClearsTradeHistory)
 
     MatchingEngine engine(order_book);
 
-    engine.execute_market_sell(20);
+    const ExecutionResult result =
+        engine.execute_market_sell(20);
 
+    EXPECT_EQ(result.executed_quantity, 20);
     ASSERT_EQ(engine.trade_history().size(), 1U);
 
     engine.clear_trade_history();
@@ -347,4 +351,171 @@ TEST(MatchingEngineTest, DoesNotRecordTradeForUnfilledOrder)
     EXPECT_TRUE(result.unfilled());
     EXPECT_TRUE(result.trades.empty());
     EXPECT_TRUE(engine.trade_history().empty());
+}
+
+TEST(MatchingEngineTest, PlacesLimitBuyOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId order_id =
+        engine.place_limit_buy(525'000, 100);
+
+    EXPECT_EQ(order_id, 1U);
+
+    const std::vector<LimitOrder>& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 1U);
+
+    EXPECT_EQ(orders[0].order_id, 1U);
+    EXPECT_EQ(orders[0].side, OrderSide::Buy);
+    EXPECT_EQ(orders[0].price_ticks, 525'000);
+    EXPECT_EQ(orders[0].original_quantity, 100);
+    EXPECT_EQ(orders[0].remaining_quantity, 100);
+    EXPECT_EQ(orders[0].sequence_number, 1U);
+}
+
+TEST(MatchingEngineTest, PlacesLimitSellOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId order_id =
+        engine.place_limit_sell(540'000, 80);
+
+    EXPECT_EQ(order_id, 1U);
+
+    const std::vector<LimitOrder>& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 1U);
+
+    EXPECT_EQ(orders[0].order_id, 1U);
+    EXPECT_EQ(orders[0].side, OrderSide::Sell);
+    EXPECT_EQ(orders[0].price_ticks, 540'000);
+    EXPECT_EQ(orders[0].original_quantity, 80);
+    EXPECT_EQ(orders[0].remaining_quantity, 80);
+    EXPECT_EQ(orders[0].sequence_number, 1U);
+}
+
+TEST(MatchingEngineTest, AssignsSequentialOrderIds)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId first =
+        engine.place_limit_buy(520'000, 50);
+
+    const OrderId second =
+        engine.place_limit_sell(540'000, 60);
+
+    const OrderId third =
+        engine.place_limit_buy(515'000, 70);
+
+    EXPECT_EQ(first, 1U);
+    EXPECT_EQ(second, 2U);
+    EXPECT_EQ(third, 3U);
+}
+
+TEST(MatchingEngineTest, AssignsFifoSequenceNumbers)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    static_cast<void>(
+        engine.place_limit_buy(520'000, 50)
+    );
+
+    static_cast<void>(
+        engine.place_limit_buy(520'000, 60)
+    );
+
+    static_cast<void>(
+        engine.place_limit_sell(540'000, 70)
+    );
+
+    const std::vector<LimitOrder>& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 3U);
+
+    EXPECT_EQ(orders[0].sequence_number, 1U);
+    EXPECT_EQ(orders[1].sequence_number, 2U);
+    EXPECT_EQ(orders[2].sequence_number, 3U);
+}
+
+TEST(MatchingEngineTest, StoresMultipleActiveLimitOrders)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    static_cast<void>(
+        engine.place_limit_buy(520'000, 50)
+    );
+
+    static_cast<void>(
+        engine.place_limit_sell(540'000, 60)
+    );
+
+    static_cast<void>(
+        engine.place_limit_buy(515'000, 70)
+    );
+
+    const std::vector<LimitOrder>& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 3U);
+
+    EXPECT_EQ(orders[0].side, OrderSide::Buy);
+    EXPECT_EQ(orders[1].side, OrderSide::Sell);
+    EXPECT_EQ(orders[2].side, OrderSide::Buy);
+}
+
+TEST(MatchingEngineTest, RejectsNonPositiveLimitPrice)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_buy(0, 100)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_sell(-1, 100)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_TRUE(
+        engine.active_limit_orders().empty()
+    );
+}
+
+TEST(MatchingEngineTest, RejectsNonPositiveLimitQuantity)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_buy(525'000, 0)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_sell(540'000, -1)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_TRUE(
+        engine.active_limit_orders().empty()
+    );
 }

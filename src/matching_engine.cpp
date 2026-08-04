@@ -64,12 +64,8 @@ ExecutionResult MatchingEngine::execute_market_order(
         result.remaining_quantity -= executed_at_level;
 
         weighted_price_total +=
-            static_cast<long double>(
-                best_level.price_ticks
-            ) *
-            static_cast<long double>(
-                executed_at_level
-            );
+            static_cast<long double>(best_level.price_ticks) *
+            static_cast<long double>(executed_at_level);
 
         const std::int64_t remaining_at_level =
             best_level.quantity - executed_at_level;
@@ -79,8 +75,7 @@ ExecutionResult MatchingEngine::execute_market_order(
                 best_level.price_ticks,
                 remaining_at_level
             );
-        }
-        else {
+        } else {
             order_book_.update_bid(
                 best_level.price_ticks,
                 remaining_at_level
@@ -94,17 +89,6 @@ ExecutionResult MatchingEngine::execute_market_order(
             static_cast<long double>(
                 result.executed_quantity
             );
-
-        if (
-            average_price >
-            static_cast<long double>(
-                std::numeric_limits<std::int64_t>::max()
-            )
-        ) {
-            throw std::overflow_error(
-                "Average execution price overflow."
-            );
-        }
 
         result.average_price_ticks =
             static_cast<std::int64_t>(
@@ -133,6 +117,72 @@ ExecutionResult MatchingEngine::execute_market_sell(
         OrderSide::Sell,
         quantity
     );
+}
+
+OrderId MatchingEngine::place_limit_order(
+    OrderSide side,
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    if (price_ticks <= 0) {
+        throw std::invalid_argument(
+            "Limit price must be positive."
+        );
+    }
+
+    if (quantity <= 0) {
+        throw std::invalid_argument(
+            "Limit quantity must be positive."
+        );
+    }
+
+    const OrderId order_id =
+        order_id_generator_.next();
+
+    active_limit_orders_.push_back(
+        LimitOrder{
+            .order_id = order_id,
+            .side = side,
+            .price_ticks = price_ticks,
+            .original_quantity = quantity,
+            .remaining_quantity = quantity,
+            .sequence_number =
+                next_sequence_number_++
+        }
+    );
+
+    return order_id;
+}
+
+OrderId MatchingEngine::place_limit_buy(
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    return place_limit_order(
+        OrderSide::Buy,
+        price_ticks,
+        quantity
+    );
+}
+
+OrderId MatchingEngine::place_limit_sell(
+    std::int64_t price_ticks,
+    std::int64_t quantity
+)
+{
+    return place_limit_order(
+        OrderSide::Sell,
+        price_ticks,
+        quantity
+    );
+}
+
+const std::vector<LimitOrder>&
+MatchingEngine::active_limit_orders() const noexcept
+{
+    return active_limit_orders_;
 }
 
 const std::vector<Trade>&

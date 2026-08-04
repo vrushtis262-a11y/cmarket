@@ -2,7 +2,9 @@
 #define CMARKET_MATCHING_ENGINE_HPP
 
 #include "execution.hpp"
+#include "limit_order.hpp"
 #include "order_book.hpp"
+#include "order_id_generator.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -22,6 +24,22 @@ public:
     );
 
     [[nodiscard]]
+    OrderId place_limit_buy(
+        std::int64_t price_ticks,
+        std::int64_t quantity
+    );
+
+    [[nodiscard]]
+    OrderId place_limit_sell(
+        std::int64_t price_ticks,
+        std::int64_t quantity
+    );
+
+    [[nodiscard]]
+    const std::vector<LimitOrder>&
+    active_limit_orders() const noexcept;
+
+    [[nodiscard]]
     const std::vector<Trade>&
     trade_history() const noexcept;
 
@@ -34,7 +52,17 @@ private:
         std::int64_t quantity
     );
 
+    [[nodiscard]]
+    OrderId place_limit_order(
+        OrderSide side,
+        std::int64_t price_ticks,
+        std::int64_t quantity
+    );
+
     OrderBook& order_book_;
+    OrderIdGenerator order_id_generator_;
+    SequenceNumber next_sequence_number_ = 1;
+    std::vector<LimitOrder> active_limit_orders_;
     std::vector<Trade> trade_history_;
 };
 
