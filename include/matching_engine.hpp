@@ -36,6 +36,9 @@ public:
     );
 
     [[nodiscard]]
+    bool cancel_order(OrderId order_id);
+
+    [[nodiscard]]
     const std::vector<LimitOrder>&
     active_limit_orders() const noexcept;
 

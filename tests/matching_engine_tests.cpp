@@ -505,7 +505,7 @@ TEST(MatchingEngineTest, RejectsNonPositiveLimitQuantity)
         static_cast<void>(
             engine.place_limit_buy(525'000, 0)
         ),
-        std::invalid_argument
+        std::invalid_argument 
     );
 
     EXPECT_THROW(
@@ -518,4 +518,110 @@ TEST(MatchingEngineTest, RejectsNonPositiveLimitQuantity)
     EXPECT_TRUE(
         engine.active_limit_orders().empty()
     );
+}
+TEST(MatchingEngineTest, CancelsExistingOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId order_id =
+        engine.place_limit_buy(520'000, 100);
+
+    EXPECT_TRUE(
+        engine.cancel_order(order_id)
+    );
+
+    EXPECT_TRUE(
+        engine.active_limit_orders().empty()
+    );
+}
+
+TEST(MatchingEngineTest, CancelMissingOrderReturnsFalse)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    engine.place_limit_buy(520'000, 100);
+
+    EXPECT_FALSE(
+        engine.cancel_order(999)
+    );
+
+    EXPECT_EQ(
+        engine.active_limit_orders().size(),
+        1U
+    );
+}
+
+TEST(MatchingEngineTest, CancelsFirstOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId first =
+        engine.place_limit_buy(520'000, 10);
+
+    engine.place_limit_buy(521'000, 20);
+    engine.place_limit_buy(522'000, 30);
+
+    EXPECT_TRUE(
+        engine.cancel_order(first)
+    );
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+
+    EXPECT_EQ(orders[0].order_id, 2U);
+    EXPECT_EQ(orders[1].order_id, 3U);
+}
+
+TEST(MatchingEngineTest, CancelsMiddleOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    engine.place_limit_buy(520'000, 10);
+
+    const OrderId middle =
+        engine.place_limit_buy(521'000, 20);
+
+    engine.place_limit_buy(522'000, 30);
+
+    EXPECT_TRUE(
+        engine.cancel_order(middle)
+    );
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+
+    EXPECT_EQ(orders[0].order_id, 1U);
+    EXPECT_EQ(orders[1].order_id, 3U);
+}
+
+TEST(MatchingEngineTest, CancelsLastOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    engine.place_limit_buy(520'000, 10);
+    engine.place_limit_buy(521'000, 20);
+
+    const OrderId last =
+        engine.place_limit_buy(522'000, 30);
+
+    EXPECT_TRUE(
+        engine.cancel_order(last)
+    );
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+
+    EXPECT_EQ(orders[0].order_id, 1U);
+    EXPECT_EQ(orders[1].order_id, 2U);
 }

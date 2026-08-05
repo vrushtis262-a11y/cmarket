@@ -179,6 +179,30 @@ OrderId MatchingEngine::place_limit_sell(
     );
 }
 
+// -------------------------
+// Cancel Order
+// -------------------------
+bool MatchingEngine::cancel_order(
+    OrderId order_id
+)
+{
+    const auto it =
+        std::find_if(
+            active_limit_orders_.begin(),
+            active_limit_orders_.end(),
+            [order_id](const LimitOrder& order)
+            {
+                return order.order_id == order_id;
+            });
+
+    if (it == active_limit_orders_.end()) {
+        return false;
+    }
+
+    active_limit_orders_.erase(it);
+    return true;
+}
+
 const std::vector<LimitOrder>&
 MatchingEngine::active_limit_orders() const noexcept
 {
