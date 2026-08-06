@@ -39,6 +39,13 @@ public:
     bool cancel_order(OrderId order_id);
 
     [[nodiscard]]
+    bool modify_order(
+        OrderId order_id,
+        std::int64_t new_price_ticks,
+        std::int64_t new_quantity
+    );
+
+    [[nodiscard]]
     const std::vector<LimitOrder>&
     active_limit_orders() const noexcept;
 

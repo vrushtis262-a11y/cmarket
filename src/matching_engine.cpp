@@ -64,8 +64,12 @@ ExecutionResult MatchingEngine::execute_market_order(
         result.remaining_quantity -= executed_at_level;
 
         weighted_price_total +=
-            static_cast<long double>(best_level.price_ticks) *
-            static_cast<long double>(executed_at_level);
+            static_cast<long double>(
+                best_level.price_ticks
+            ) *
+            static_cast<long double>(
+                executed_at_level
+            );
 
         const std::int64_t remaining_at_level =
             best_level.quantity - executed_at_level;
@@ -179,27 +183,84 @@ OrderId MatchingEngine::place_limit_sell(
     );
 }
 
-// -------------------------
-// Cancel Order
-// -------------------------
 bool MatchingEngine::cancel_order(
     OrderId order_id
 )
 {
-    const auto it =
+    const auto order_iterator =
         std::find_if(
             active_limit_orders_.begin(),
             active_limit_orders_.end(),
             [order_id](const LimitOrder& order)
             {
                 return order.order_id == order_id;
-            });
+            }
+        );
 
-    if (it == active_limit_orders_.end()) {
+    if (order_iterator ==
+        active_limit_orders_.end()) {
         return false;
     }
 
-    active_limit_orders_.erase(it);
+    active_limit_orders_.erase(order_iterator);
+    return true;
+}
+
+bool MatchingEngine::modify_order(
+    OrderId order_id,
+    std::int64_t new_price_ticks,
+    std::int64_t new_quantity
+)
+{
+    if (new_price_ticks <= 0) {
+        throw std::invalid_argument(
+            "Modified limit price must be positive."
+        );
+    }
+
+    if (new_quantity <= 0) {
+        throw std::invalid_argument(
+            "Modified limit quantity must be positive."
+        );
+    }
+
+    const auto order_iterator =
+        std::find_if(
+            active_limit_orders_.begin(),
+            active_limit_orders_.end(),
+            [order_id](const LimitOrder& order)
+            {
+                return order.order_id == order_id;
+            }
+        );
+
+    if (order_iterator ==
+        active_limit_orders_.end()) {
+        return false;
+    }
+
+    const bool price_changed =
+        new_price_ticks !=
+        order_iterator->price_ticks;
+
+    const bool quantity_increased =
+        new_quantity >
+        order_iterator->remaining_quantity;
+
+    if (price_changed || quantity_increased) {
+        order_iterator->sequence_number =
+            next_sequence_number_++;
+    }
+
+    order_iterator->price_ticks =
+        new_price_ticks;
+
+    order_iterator->original_quantity =
+        new_quantity;
+
+    order_iterator->remaining_quantity =
+        new_quantity;
+
     return true;
 }
 
