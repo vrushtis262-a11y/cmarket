@@ -1,8 +1,9 @@
 #include "matching_engine.hpp"
 
 #include <algorithm>
-#include <limits>
+#include <map>
 #include <stdexcept>
+#include <vector>
 
 MatchingEngine::MatchingEngine(
     OrderBook& order_book
@@ -43,7 +44,8 @@ ExecutionResult MatchingEngine::execute_market_order(
             break;
         }
 
-        const PriceLevel best_level = levels.front();
+        const PriceLevel best_level =
+            levels.front();
 
         const std::int64_t executed_at_level =
             std::min(
@@ -60,8 +62,11 @@ ExecutionResult MatchingEngine::execute_market_order(
         result.trades.push_back(trade);
         trade_history_.push_back(trade);
 
-        result.executed_quantity += executed_at_level;
-        result.remaining_quantity -= executed_at_level;
+        result.executed_quantity +=
+            executed_at_level;
+
+        result.remaining_quantity -=
+            executed_at_level;
 
         weighted_price_total +=
             static_cast<long double>(
@@ -72,14 +77,16 @@ ExecutionResult MatchingEngine::execute_market_order(
             );
 
         const std::int64_t remaining_at_level =
-            best_level.quantity - executed_at_level;
+            best_level.quantity -
+            executed_at_level;
 
         if (side == OrderSide::Buy) {
             order_book_.update_ask(
                 best_level.price_ticks,
                 remaining_at_level
             );
-        } else {
+        }
+        else {
             order_book_.update_bid(
                 best_level.price_ticks,
                 remaining_at_level
@@ -144,17 +151,25 @@ OrderId MatchingEngine::place_limit_order(
     const OrderId order_id =
         order_id_generator_.next();
 
-    active_limit_orders_.push_back(
-        LimitOrder{
-            .order_id = order_id,
-            .side = side,
-            .price_ticks = price_ticks,
-            .original_quantity = quantity,
-            .remaining_quantity = quantity,
-            .sequence_number =
-                next_sequence_number_++
-        }
-    );
+    LimitOrder incoming_order{
+        .order_id = order_id,
+        .side = side,
+        .price_ticks = price_ticks,
+        .original_quantity = quantity,
+        .remaining_quantity = quantity,
+        .sequence_number =
+            next_sequence_number_++
+    };
+
+    match_limit_order(incoming_order);
+
+    if (!incoming_order.is_filled()) {
+        active_limit_orders_.push_back(
+            incoming_order
+        );
+    }
+
+    rebuild_order_book();
 
     return order_id;
 }
@@ -183,6 +198,121 @@ OrderId MatchingEngine::place_limit_sell(
     );
 }
 
+void MatchingEngine::match_limit_order(
+    LimitOrder& incoming_order
+)
+{
+    while (incoming_order.remaining_quantity > 0) {
+        auto best_match =
+            active_limit_orders_.end();
+
+        for (
+            auto iterator =
+                active_limit_orders_.begin();
+            iterator !=
+                active_limit_orders_.end();
+            ++iterator
+        ) {
+            if (
+                iterator->side ==
+                incoming_order.side
+            ) {
+                continue;
+            }
+
+            const bool prices_cross =
+                incoming_order.side ==
+                    OrderSide::Buy
+                ? iterator->price_ticks <=
+                    incoming_order.price_ticks
+                : iterator->price_ticks >=
+                    incoming_order.price_ticks;
+
+            if (!prices_cross) {
+                continue;
+            }
+
+            if (
+                best_match ==
+                active_limit_orders_.end()
+            ) {
+                best_match = iterator;
+                continue;
+            }
+
+            bool has_better_price = false;
+
+            if (
+                incoming_order.side ==
+                OrderSide::Buy
+            ) {
+                has_better_price =
+                    iterator->price_ticks <
+                    best_match->price_ticks;
+            }
+            else {
+                has_better_price =
+                    iterator->price_ticks >
+                    best_match->price_ticks;
+            }
+
+            const bool has_same_price =
+                iterator->price_ticks ==
+                best_match->price_ticks;
+
+            const bool has_earlier_time =
+                iterator->sequence_number <
+                best_match->sequence_number;
+
+            if (
+                has_better_price ||
+                (
+                    has_same_price &&
+                    has_earlier_time
+                )
+            ) {
+                best_match = iterator;
+            }
+        }
+
+        if (
+            best_match ==
+            active_limit_orders_.end()
+        ) {
+            break;
+        }
+
+        const std::int64_t executed_quantity =
+            std::min(
+                incoming_order.remaining_quantity,
+                best_match->remaining_quantity
+            );
+
+        const Trade trade{
+            .aggressor_side =
+                incoming_order.side,
+            .price_ticks =
+                best_match->price_ticks,
+            .quantity =
+                executed_quantity
+        };
+
+        trade_history_.push_back(trade);
+
+        incoming_order.remaining_quantity -=
+            executed_quantity;
+
+        best_match->remaining_quantity -=
+            executed_quantity;
+
+        if (best_match->is_filled()) {
+            active_limit_orders_.erase(
+                best_match
+            );
+        }
+    }
+}
+
 bool MatchingEngine::cancel_order(
     OrderId order_id
 )
@@ -191,18 +321,27 @@ bool MatchingEngine::cancel_order(
         std::find_if(
             active_limit_orders_.begin(),
             active_limit_orders_.end(),
-            [order_id](const LimitOrder& order)
-            {
-                return order.order_id == order_id;
+            [order_id](
+                const LimitOrder& order
+            ) {
+                return order.order_id ==
+                       order_id;
             }
         );
 
-    if (order_iterator ==
-        active_limit_orders_.end()) {
+    if (
+        order_iterator ==
+        active_limit_orders_.end()
+    ) {
         return false;
     }
 
-    active_limit_orders_.erase(order_iterator);
+    active_limit_orders_.erase(
+        order_iterator
+    );
+
+    rebuild_order_book();
+
     return true;
 }
 
@@ -228,40 +367,142 @@ bool MatchingEngine::modify_order(
         std::find_if(
             active_limit_orders_.begin(),
             active_limit_orders_.end(),
-            [order_id](const LimitOrder& order)
-            {
-                return order.order_id == order_id;
+            [order_id](
+                const LimitOrder& order
+            ) {
+                return order.order_id ==
+                       order_id;
             }
         );
 
-    if (order_iterator ==
-        active_limit_orders_.end()) {
+    if (
+        order_iterator ==
+        active_limit_orders_.end()
+    ) {
         return false;
     }
 
+    LimitOrder modified_order =
+        *order_iterator;
+
+    active_limit_orders_.erase(
+        order_iterator
+    );
+
     const bool price_changed =
         new_price_ticks !=
-        order_iterator->price_ticks;
+        modified_order.price_ticks;
 
     const bool quantity_increased =
         new_quantity >
-        order_iterator->remaining_quantity;
+        modified_order.remaining_quantity;
 
-    if (price_changed || quantity_increased) {
-        order_iterator->sequence_number =
+    if (
+        price_changed ||
+        quantity_increased
+    ) {
+        modified_order.sequence_number =
             next_sequence_number_++;
     }
 
-    order_iterator->price_ticks =
+    modified_order.price_ticks =
         new_price_ticks;
 
-    order_iterator->original_quantity =
+    modified_order.original_quantity =
         new_quantity;
 
-    order_iterator->remaining_quantity =
+    modified_order.remaining_quantity =
         new_quantity;
+
+    match_limit_order(modified_order);
+
+    if (!modified_order.is_filled()) {
+        active_limit_orders_.push_back(
+            modified_order
+        );
+    }
+
+    rebuild_order_book();
 
     return true;
+}
+
+void MatchingEngine::rebuild_order_book()
+{
+    std::map<
+        std::int64_t,
+        std::int64_t,
+        std::greater<>
+    > bid_quantities;
+
+    std::map<
+        std::int64_t,
+        std::int64_t
+    > ask_quantities;
+
+    for (
+        const LimitOrder& order :
+        active_limit_orders_
+    ) {
+        if (order.is_filled()) {
+            continue;
+        }
+
+        if (order.side == OrderSide::Buy) {
+            bid_quantities[
+                order.price_ticks
+            ] += order.remaining_quantity;
+        }
+        else {
+            ask_quantities[
+                order.price_ticks
+            ] += order.remaining_quantity;
+        }
+    }
+
+    std::vector<PriceLevel> bids;
+    std::vector<PriceLevel> asks;
+
+    bids.reserve(
+        bid_quantities.size()
+    );
+
+    asks.reserve(
+        ask_quantities.size()
+    );
+
+    for (
+        const auto& [
+            price_ticks,
+            quantity
+        ] : bid_quantities
+    ) {
+        bids.push_back(
+            PriceLevel{
+                .price_ticks = price_ticks,
+                .quantity = quantity
+            }
+        );
+    }
+
+    for (
+        const auto& [
+            price_ticks,
+            quantity
+        ] : ask_quantities
+    ) {
+        asks.push_back(
+            PriceLevel{
+                .price_ticks = price_ticks,
+                .quantity = quantity
+            }
+        );
+    }
+
+    order_book_.replace_snapshot(
+        bids,
+        asks
+    );
 }
 
 const std::vector<LimitOrder>&

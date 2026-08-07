@@ -69,6 +69,12 @@ private:
         std::int64_t quantity
     );
 
+    void match_limit_order(
+        LimitOrder& incoming_order
+    );
+
+    void rebuild_order_book();
+
     OrderBook& order_book_;
     OrderIdGenerator order_id_generator_;
     SequenceNumber next_sequence_number_ = 1;

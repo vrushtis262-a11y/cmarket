@@ -809,3 +809,190 @@ TEST(MatchingEngineTest, ModifyUnknownOrderReturnsFalse)
         100
     );
 }
+
+TEST(MatchingEngineTest, MatchesCrossingLimitBuyOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    engine.place_limit_sell(
+        520'000,
+        100
+    );
+
+    engine.place_limit_buy(
+        525'000,
+        100
+    );
+
+    EXPECT_TRUE(
+        engine.active_limit_orders().empty()
+    );
+
+    const auto& trades =
+        engine.trade_history();
+
+    ASSERT_EQ(
+        trades.size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        trades[0].aggressor_side,
+        OrderSide::Buy
+    );
+
+    EXPECT_EQ(
+        trades[0].price_ticks,
+        520'000
+    );
+
+    EXPECT_EQ(
+        trades[0].quantity,
+        100
+    );
+
+    EXPECT_TRUE(
+        order_book.empty()
+    );
+}
+
+TEST(MatchingEngineTest, MatchesCrossingLimitSellOrder)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    engine.place_limit_buy(
+        520'000,
+        100
+    );
+
+    engine.place_limit_sell(
+        515'000,
+        100
+    );
+
+    EXPECT_TRUE(
+        engine.active_limit_orders().empty()
+    );
+
+    const auto& trades =
+        engine.trade_history();
+
+    ASSERT_EQ(
+        trades.size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        trades[0].aggressor_side,
+        OrderSide::Sell
+    );
+
+    EXPECT_EQ(
+        trades[0].price_ticks,
+        520'000
+    );
+
+    EXPECT_EQ(
+        trades[0].quantity,
+        100
+    );
+
+    EXPECT_TRUE(
+        order_book.empty()
+    );
+}
+
+TEST(MatchingEngineTest, MatchesOldestOrderFirstAtSamePrice)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId first =
+        engine.place_limit_sell(
+            520'000,
+            100
+        );
+
+    const OrderId second =
+        engine.place_limit_sell(
+            520'000,
+            100
+        );
+
+    engine.place_limit_buy(
+        520'000,
+        100
+    );
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 1U);
+
+    EXPECT_EQ(
+        orders[0].order_id,
+        second
+    );
+
+    EXPECT_EQ(
+        orders[0].remaining_quantity,
+        100
+    );
+
+    const auto& trades =
+        engine.trade_history();
+
+    ASSERT_EQ(
+        trades.size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        trades[0].price_ticks,
+        520'000
+    );
+
+    EXPECT_EQ(
+        trades[0].quantity,
+        100
+    );
+}
+
+TEST(MatchingEngineTest, AssignsUniqueIdsToActiveOrders)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId first =
+        engine.place_limit_buy(
+            500'000,
+            100
+        );
+
+    const OrderId second =
+        engine.place_limit_buy(
+            510'000,
+            100
+        );
+
+    const OrderId third =
+        engine.place_limit_sell(
+            550'000,
+            100
+        );
+
+    EXPECT_NE(first, second);
+    EXPECT_NE(first, third);
+    EXPECT_NE(second, third);
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 3U);
+
+    EXPECT_EQ(orders[0].order_id, first);
+    EXPECT_EQ(orders[1].order_id, second);
+    EXPECT_EQ(orders[2].order_id, third);
+}
