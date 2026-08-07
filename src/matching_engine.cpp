@@ -1,6 +1,7 @@
 #include "matching_engine.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -164,7 +165,7 @@ OrderId MatchingEngine::place_limit_order(
     match_limit_order(incoming_order);
 
     if (!incoming_order.is_filled()) {
-        active_limit_orders_.push_back(
+        order_manager_.add_order(
             incoming_order
         );
     }
@@ -202,15 +203,16 @@ void MatchingEngine::match_limit_order(
     LimitOrder& incoming_order
 )
 {
+    std::vector<LimitOrder>& orders =
+        order_manager_.orders();
+
     while (incoming_order.remaining_quantity > 0) {
         auto best_match =
-            active_limit_orders_.end();
+            orders.end();
 
         for (
-            auto iterator =
-                active_limit_orders_.begin();
-            iterator !=
-                active_limit_orders_.end();
+            auto iterator = orders.begin();
+            iterator != orders.end();
             ++iterator
         ) {
             if (
@@ -232,10 +234,7 @@ void MatchingEngine::match_limit_order(
                 continue;
             }
 
-            if (
-                best_match ==
-                active_limit_orders_.end()
-            ) {
+            if (best_match == orders.end()) {
                 best_match = iterator;
                 continue;
             }
@@ -275,10 +274,7 @@ void MatchingEngine::match_limit_order(
             }
         }
 
-        if (
-            best_match ==
-            active_limit_orders_.end()
-        ) {
+        if (best_match == orders.end()) {
             break;
         }
 
@@ -306,9 +302,7 @@ void MatchingEngine::match_limit_order(
             executed_quantity;
 
         if (best_match->is_filled()) {
-            active_limit_orders_.erase(
-                best_match
-            );
+            orders.erase(best_match);
         }
     }
 }
@@ -317,28 +311,14 @@ bool MatchingEngine::cancel_order(
     OrderId order_id
 )
 {
-    const auto order_iterator =
-        std::find_if(
-            active_limit_orders_.begin(),
-            active_limit_orders_.end(),
-            [order_id](
-                const LimitOrder& order
-            ) {
-                return order.order_id ==
-                       order_id;
-            }
+    const bool cancelled =
+        order_manager_.cancel_order(
+            order_id
         );
 
-    if (
-        order_iterator ==
-        active_limit_orders_.end()
-    ) {
+    if (!cancelled) {
         return false;
     }
-
-    active_limit_orders_.erase(
-        order_iterator
-    );
 
     rebuild_order_book();
 
@@ -363,30 +343,22 @@ bool MatchingEngine::modify_order(
         );
     }
 
-    const auto order_iterator =
-        std::find_if(
-            active_limit_orders_.begin(),
-            active_limit_orders_.end(),
-            [order_id](
-                const LimitOrder& order
-            ) {
-                return order.order_id ==
-                       order_id;
-            }
+    const LimitOrder* existing_order =
+        order_manager_.find_order(
+            order_id
         );
 
-    if (
-        order_iterator ==
-        active_limit_orders_.end()
-    ) {
+    if (existing_order == nullptr) {
         return false;
     }
 
     LimitOrder modified_order =
-        *order_iterator;
+        *existing_order;
 
-    active_limit_orders_.erase(
-        order_iterator
+    static_cast<void>(
+        order_manager_.cancel_order(
+            order_id
+        )
     );
 
     const bool price_changed =
@@ -414,10 +386,12 @@ bool MatchingEngine::modify_order(
     modified_order.remaining_quantity =
         new_quantity;
 
-    match_limit_order(modified_order);
+    match_limit_order(
+        modified_order
+    );
 
     if (!modified_order.is_filled()) {
-        active_limit_orders_.push_back(
+        order_manager_.add_order(
             modified_order
         );
     }
@@ -442,7 +416,7 @@ void MatchingEngine::rebuild_order_book()
 
     for (
         const LimitOrder& order :
-        active_limit_orders_
+        order_manager_.orders()
     ) {
         if (order.is_filled()) {
             continue;
@@ -508,7 +482,7 @@ void MatchingEngine::rebuild_order_book()
 const std::vector<LimitOrder>&
 MatchingEngine::active_limit_orders() const noexcept
 {
-    return active_limit_orders_;
+    return order_manager_.orders();
 }
 
 const std::vector<Trade>&

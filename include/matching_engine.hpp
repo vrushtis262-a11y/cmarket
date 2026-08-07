@@ -5,6 +5,7 @@
 #include "limit_order.hpp"
 #include "order_book.hpp"
 #include "order_id_generator.hpp"
+#include "order_manager.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -78,7 +79,7 @@ private:
     OrderBook& order_book_;
     OrderIdGenerator order_id_generator_;
     SequenceNumber next_sequence_number_ = 1;
-    std::vector<LimitOrder> active_limit_orders_;
+    OrderManager order_manager_;
     std::vector<Trade> trade_history_;
 };
 

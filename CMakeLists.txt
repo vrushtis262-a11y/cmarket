@@ -77,6 +77,20 @@ cmarket_enable_warnings(cmarket_order_book)
 cmarket_enable_sanitizers(cmarket_order_book)
 
 add_library(
+    cmarket_order_manager
+    src/order_manager.cpp
+)
+
+target_include_directories(
+    cmarket_order_manager
+    PUBLIC
+    include
+)
+
+cmarket_enable_warnings(cmarket_order_manager)
+cmarket_enable_sanitizers(cmarket_order_manager)
+
+add_library(
     cmarket_matching_engine
     src/matching_engine.cpp
 )
@@ -91,6 +105,7 @@ target_link_libraries(
     cmarket_matching_engine
     PUBLIC
     cmarket_order_book
+    cmarket_order_manager
 )
 
 cmarket_enable_warnings(cmarket_matching_engine)
