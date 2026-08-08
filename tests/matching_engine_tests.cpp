@@ -505,7 +505,7 @@ TEST(MatchingEngineTest, RejectsNonPositiveLimitQuantity)
         static_cast<void>(
             engine.place_limit_buy(525'000, 0)
         ),
-        std::invalid_argument 
+        std::invalid_argument
     );
 
     EXPECT_THROW(
@@ -542,7 +542,12 @@ TEST(MatchingEngineTest, CancelMissingOrderReturnsFalse)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    engine.place_limit_buy(520'000, 100);
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            100
+        )
+    );
 
     EXPECT_FALSE(
         engine.cancel_order(999)
@@ -562,8 +567,19 @@ TEST(MatchingEngineTest, CancelsFirstOrder)
     const OrderId first =
         engine.place_limit_buy(520'000, 10);
 
-    engine.place_limit_buy(521'000, 20);
-    engine.place_limit_buy(522'000, 30);
+    static_cast<void>(
+        engine.place_limit_buy(
+            521'000,
+            20
+        )
+    );
+
+    static_cast<void>(
+        engine.place_limit_buy(
+            522'000,
+            30
+        )
+    );
 
     EXPECT_TRUE(
         engine.cancel_order(first)
@@ -583,12 +599,22 @@ TEST(MatchingEngineTest, CancelsMiddleOrder)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    engine.place_limit_buy(520'000, 10);
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            10
+        )
+    );
 
     const OrderId middle =
         engine.place_limit_buy(521'000, 20);
 
-    engine.place_limit_buy(522'000, 30);
+    static_cast<void>(
+        engine.place_limit_buy(
+            522'000,
+            30
+        )
+    );
 
     EXPECT_TRUE(
         engine.cancel_order(middle)
@@ -608,8 +634,19 @@ TEST(MatchingEngineTest, CancelsLastOrder)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    engine.place_limit_buy(520'000, 10);
-    engine.place_limit_buy(521'000, 20);
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            10
+        )
+    );
+
+    static_cast<void>(
+        engine.place_limit_buy(
+            521'000,
+            20
+        )
+    );
 
     const OrderId last =
         engine.place_limit_buy(522'000, 30);
@@ -815,14 +852,18 @@ TEST(MatchingEngineTest, MatchesCrossingLimitBuyOrder)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    engine.place_limit_sell(
-        520'000,
-        100
+    static_cast<void>(
+        engine.place_limit_sell(
+            520'000,
+            100
+        )
     );
 
-    engine.place_limit_buy(
-        525'000,
-        100
+    static_cast<void>(
+        engine.place_limit_buy(
+            525'000,
+            100
+        )
     );
 
     EXPECT_TRUE(
@@ -862,14 +903,18 @@ TEST(MatchingEngineTest, MatchesCrossingLimitSellOrder)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    engine.place_limit_buy(
-        520'000,
-        100
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            100
+        )
     );
 
-    engine.place_limit_sell(
-        515'000,
-        100
+    static_cast<void>(
+        engine.place_limit_sell(
+            515'000,
+            100
+        )
     );
 
     EXPECT_TRUE(
@@ -909,11 +954,12 @@ TEST(MatchingEngineTest, MatchesOldestOrderFirstAtSamePrice)
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    const OrderId first =
+    static_cast<void>(
         engine.place_limit_sell(
             520'000,
             100
-        );
+        )
+    );
 
     const OrderId second =
         engine.place_limit_sell(
@@ -921,9 +967,11 @@ TEST(MatchingEngineTest, MatchesOldestOrderFirstAtSamePrice)
             100
         );
 
-    engine.place_limit_buy(
-        520'000,
-        100
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            100
+        )
     );
 
     const auto& orders =

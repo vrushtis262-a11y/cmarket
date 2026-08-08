@@ -50,7 +50,9 @@ TEST(OrderIdGeneratorTest, ThrowsWhenOrderIdsAreExhausted)
     OrderIdGenerator generator(maximum_order_id);
 
     EXPECT_THROW(
-        generator.next(),
+        static_cast<void>(
+            generator.next()
+        ),
         std::overflow_error
     );
 }
