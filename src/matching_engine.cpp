@@ -199,6 +199,103 @@ OrderId MatchingEngine::place_limit_sell(
     );
 }
 
+MatchingEngine::OrderIterator
+MatchingEngine::find_best_match(
+    const LimitOrder& incoming_order,
+    std::vector<LimitOrder>& orders
+)
+{
+    OrderIterator best_match =
+        orders.end();
+
+    for (
+        auto iterator = orders.begin();
+        iterator != orders.end();
+        ++iterator
+    ) {
+        if (
+            iterator->side ==
+            incoming_order.side
+        ) {
+            continue;
+        }
+
+        const bool prices_cross =
+            incoming_order.side ==
+                OrderSide::Buy
+            ? iterator->price_ticks <=
+                incoming_order.price_ticks
+            : iterator->price_ticks >=
+                incoming_order.price_ticks;
+
+        if (!prices_cross) {
+            continue;
+        }
+
+        if (best_match == orders.end()) {
+            best_match = iterator;
+            continue;
+        }
+
+        const bool has_better_price =
+            incoming_order.side ==
+                OrderSide::Buy
+            ? iterator->price_ticks <
+                best_match->price_ticks
+            : iterator->price_ticks >
+                best_match->price_ticks;
+
+        const bool has_same_price =
+            iterator->price_ticks ==
+            best_match->price_ticks;
+
+        const bool has_earlier_time =
+            iterator->sequence_number <
+            best_match->sequence_number;
+
+        if (
+            has_better_price ||
+            (
+                has_same_price &&
+                has_earlier_time
+            )
+        ) {
+            best_match = iterator;
+        }
+    }
+
+    return best_match;
+}
+
+void MatchingEngine::execute_limit_trade(
+    LimitOrder& incoming_order,
+    LimitOrder& resting_order
+)
+{
+    const std::int64_t executed_quantity =
+        std::min(
+            incoming_order.remaining_quantity,
+            resting_order.remaining_quantity
+        );
+
+    const Trade trade{
+        .aggressor_side =
+            incoming_order.side,
+        .price_ticks =
+            resting_order.price_ticks,
+        .quantity =
+            executed_quantity
+    };
+
+    trade_history_.push_back(trade);
+
+    incoming_order.remaining_quantity -=
+        executed_quantity;
+
+    resting_order.remaining_quantity -=
+        executed_quantity;
+}
+
 void MatchingEngine::match_limit_order(
     LimitOrder& incoming_order
 )
@@ -207,99 +304,20 @@ void MatchingEngine::match_limit_order(
         order_manager_.orders();
 
     while (incoming_order.remaining_quantity > 0) {
-        auto best_match =
-            orders.end();
-
-        for (
-            auto iterator = orders.begin();
-            iterator != orders.end();
-            ++iterator
-        ) {
-            if (
-                iterator->side ==
-                incoming_order.side
-            ) {
-                continue;
-            }
-
-            const bool prices_cross =
-                incoming_order.side ==
-                    OrderSide::Buy
-                ? iterator->price_ticks <=
-                    incoming_order.price_ticks
-                : iterator->price_ticks >=
-                    incoming_order.price_ticks;
-
-            if (!prices_cross) {
-                continue;
-            }
-
-            if (best_match == orders.end()) {
-                best_match = iterator;
-                continue;
-            }
-
-            bool has_better_price = false;
-
-            if (
-                incoming_order.side ==
-                OrderSide::Buy
-            ) {
-                has_better_price =
-                    iterator->price_ticks <
-                    best_match->price_ticks;
-            }
-            else {
-                has_better_price =
-                    iterator->price_ticks >
-                    best_match->price_ticks;
-            }
-
-            const bool has_same_price =
-                iterator->price_ticks ==
-                best_match->price_ticks;
-
-            const bool has_earlier_time =
-                iterator->sequence_number <
-                best_match->sequence_number;
-
-            if (
-                has_better_price ||
-                (
-                    has_same_price &&
-                    has_earlier_time
-                )
-            ) {
-                best_match = iterator;
-            }
-        }
+        OrderIterator best_match =
+            find_best_match(
+                incoming_order,
+                orders
+            );
 
         if (best_match == orders.end()) {
             break;
         }
 
-        const std::int64_t executed_quantity =
-            std::min(
-                incoming_order.remaining_quantity,
-                best_match->remaining_quantity
-            );
-
-        const Trade trade{
-            .aggressor_side =
-                incoming_order.side,
-            .price_ticks =
-                best_match->price_ticks,
-            .quantity =
-                executed_quantity
-        };
-
-        trade_history_.push_back(trade);
-
-        incoming_order.remaining_quantity -=
-            executed_quantity;
-
-        best_match->remaining_quantity -=
-            executed_quantity;
+        execute_limit_trade(
+            incoming_order,
+            *best_match
+        );
 
         if (best_match->is_filled()) {
             orders.erase(best_match);

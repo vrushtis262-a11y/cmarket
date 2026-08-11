@@ -57,6 +57,9 @@ public:
     void clear_trade_history() noexcept;
 
 private:
+    using OrderIterator =
+        std::vector<LimitOrder>::iterator;
+
     [[nodiscard]]
     ExecutionResult execute_market_order(
         OrderSide side,
@@ -72,6 +75,17 @@ private:
 
     void match_limit_order(
         LimitOrder& incoming_order
+    );
+
+    [[nodiscard]]
+    OrderIterator find_best_match(
+        const LimitOrder& incoming_order,
+        std::vector<LimitOrder>& orders
+    );
+
+    void execute_limit_trade(
+        LimitOrder& incoming_order,
+        LimitOrder& resting_order
     );
 
     void rebuild_order_book();
