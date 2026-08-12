@@ -88,6 +88,12 @@ private:
         LimitOrder& resting_order
     );
 
+    void process_limit_match(
+        LimitOrder& incoming_order,
+        std::vector<LimitOrder>& orders,
+        OrderIterator resting_order
+    );
+
     void rebuild_order_book();
 
     OrderBook& order_book_;
