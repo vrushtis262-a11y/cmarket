@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -54,14 +55,16 @@ ExecutionResult MatchingEngine::execute_market_order(
                 best_level.quantity
             );
 
-        const Trade trade{
-            .aggressor_side = side,
-            .price_ticks = best_level.price_ticks,
-            .quantity = executed_at_level
-        };
+        const Trade& recorded_trade =
+            trade_store_.record_trade(
+                side,
+                best_level.price_ticks,
+                executed_at_level
+            );
 
-        result.trades.push_back(trade);
-        trade_history_.push_back(trade);
+        result.trades.push_back(
+            recorded_trade
+        );
 
         result.executed_quantity +=
             executed_at_level;
@@ -278,22 +281,47 @@ void MatchingEngine::execute_limit_trade(
             resting_order.remaining_quantity
         );
 
-    const Trade trade{
-        .aggressor_side =
-            incoming_order.side,
-        .price_ticks =
-            resting_order.price_ticks,
-        .quantity =
-            executed_quantity
-    };
+    const OrderId buy_order_id =
+        incoming_order.side == OrderSide::Buy
+            ? incoming_order.order_id
+            : resting_order.order_id;
 
-    trade_history_.push_back(trade);
+    const OrderId sell_order_id =
+        incoming_order.side == OrderSide::Sell
+            ? incoming_order.order_id
+            : resting_order.order_id;
+
+    static_cast<void>(
+        trade_store_.record_trade(
+            incoming_order.side,
+            resting_order.price_ticks,
+            executed_quantity,
+            buy_order_id,
+            sell_order_id
+        )
+    );
 
     incoming_order.remaining_quantity -=
         executed_quantity;
 
     resting_order.remaining_quantity -=
         executed_quantity;
+}
+
+void MatchingEngine::process_limit_match(
+    LimitOrder& incoming_order,
+    std::vector<LimitOrder>& orders,
+    OrderIterator resting_order
+)
+{
+    execute_limit_trade(
+        incoming_order,
+        *resting_order
+    );
+
+    if (resting_order->is_filled()) {
+        orders.erase(resting_order);
+    }
 }
 
 void MatchingEngine::match_limit_order(
@@ -314,14 +342,11 @@ void MatchingEngine::match_limit_order(
             break;
         }
 
-        execute_limit_trade(
+        process_limit_match(
             incoming_order,
-            *best_match
+            orders,
+            best_match
         );
-
-        if (best_match->is_filled()) {
-            orders.erase(best_match);
-        }
     }
 }
 
@@ -506,10 +531,10 @@ MatchingEngine::active_limit_orders() const noexcept
 const std::vector<Trade>&
 MatchingEngine::trade_history() const noexcept
 {
-    return trade_history_;
+    return trade_store_.trades();
 }
 
 void MatchingEngine::clear_trade_history() noexcept
 {
-    trade_history_.clear();
+    trade_store_.clear();
 }

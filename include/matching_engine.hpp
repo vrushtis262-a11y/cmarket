@@ -6,6 +6,7 @@
 #include "order_book.hpp"
 #include "order_id_generator.hpp"
 #include "order_manager.hpp"
+#include "trade_store.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -100,7 +101,7 @@ private:
     OrderIdGenerator order_id_generator_;
     SequenceNumber next_sequence_number_ = 1;
     OrderManager order_manager_;
-    std::vector<Trade> trade_history_;
+    TradeStore trade_store_;
 };
 
 #endif

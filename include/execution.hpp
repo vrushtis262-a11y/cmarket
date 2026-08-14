@@ -10,10 +10,23 @@ enum class OrderSide {
     Sell
 };
 
+using TradeId = std::uint64_t;
+using TradeSequenceNumber = std::uint64_t;
+
 struct Trade {
     OrderSide aggressor_side;
     std::int64_t price_ticks;
     std::int64_t quantity;
+
+    TradeId trade_id = 0;
+
+    std::optional<std::uint64_t>
+        buy_order_id = std::nullopt;
+
+    std::optional<std::uint64_t>
+        sell_order_id = std::nullopt;
+
+    TradeSequenceNumber execution_sequence = 0;
 };
 
 struct ExecutionResult {
@@ -33,7 +46,8 @@ struct ExecutionResult {
     [[nodiscard]]
     bool partially_filled() const noexcept
     {
-        return executed_quantity > 0 && remaining_quantity > 0;
+        return executed_quantity > 0 &&
+               remaining_quantity > 0;
     }
 
     [[nodiscard]]
