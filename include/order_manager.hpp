@@ -27,10 +27,6 @@ public:
     ) const noexcept;
 
     [[nodiscard]]
-    std::vector<LimitOrder>&
-    orders() noexcept;
-
-    [[nodiscard]]
     const std::vector<LimitOrder>&
     orders() const noexcept;
 

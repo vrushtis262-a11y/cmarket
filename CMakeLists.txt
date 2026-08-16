@@ -242,6 +242,41 @@ if(BUILD_TESTING)
     cmarket_enable_sanitizers(trade_persistence_tests)
 
     add_executable(
+        trade_store_tests
+        tests/trade_store_tests.cpp
+    )
+
+    target_include_directories(
+        trade_store_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        trade_store_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(trade_store_tests)
+    cmarket_enable_sanitizers(trade_store_tests)
+
+    add_executable(
+        order_manager_tests
+        tests/order_manager_tests.cpp
+    )
+
+    target_link_libraries(
+        order_manager_tests
+        PRIVATE
+        cmarket_order_manager
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(order_manager_tests)
+    cmarket_enable_sanitizers(order_manager_tests)
+
+    add_executable(
         limit_order_tests
         tests/limit_order_tests.cpp
     )
@@ -288,6 +323,8 @@ if(BUILD_TESTING)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)
     gtest_discover_tests(trade_persistence_tests)
+    gtest_discover_tests(trade_store_tests)
+    gtest_discover_tests(order_manager_tests)
     gtest_discover_tests(limit_order_tests)
     gtest_discover_tests(order_id_generator_tests)
 endif()

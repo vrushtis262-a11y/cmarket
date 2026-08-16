@@ -202,58 +202,53 @@ OrderId MatchingEngine::place_limit_sell(
     );
 }
 
-MatchingEngine::OrderIterator
+std::optional<OrderId>
 MatchingEngine::find_best_match(
-    const LimitOrder& incoming_order,
-    std::vector<LimitOrder>& orders
-)
+    const LimitOrder& incoming_order
+) const noexcept
 {
-    OrderIterator best_match =
-        orders.end();
+    const std::vector<LimitOrder>& orders =
+        order_manager_.orders();
 
-    for (
-        auto iterator = orders.begin();
-        iterator != orders.end();
-        ++iterator
-    ) {
-        if (
-            iterator->side ==
-            incoming_order.side
-        ) {
+    const LimitOrder* best_match =
+        nullptr;
+
+    for (const LimitOrder& order : orders) {
+        if (order.side == incoming_order.side) {
             continue;
         }
 
         const bool prices_cross =
             incoming_order.side ==
                 OrderSide::Buy
-            ? iterator->price_ticks <=
+            ? order.price_ticks <=
                 incoming_order.price_ticks
-            : iterator->price_ticks >=
+            : order.price_ticks >=
                 incoming_order.price_ticks;
 
         if (!prices_cross) {
             continue;
         }
 
-        if (best_match == orders.end()) {
-            best_match = iterator;
+        if (best_match == nullptr) {
+            best_match = &order;
             continue;
         }
 
         const bool has_better_price =
             incoming_order.side ==
                 OrderSide::Buy
-            ? iterator->price_ticks <
+            ? order.price_ticks <
                 best_match->price_ticks
-            : iterator->price_ticks >
+            : order.price_ticks >
                 best_match->price_ticks;
 
         const bool has_same_price =
-            iterator->price_ticks ==
+            order.price_ticks ==
             best_match->price_ticks;
 
         const bool has_earlier_time =
-            iterator->sequence_number <
+            order.sequence_number <
             best_match->sequence_number;
 
         if (
@@ -263,11 +258,15 @@ MatchingEngine::find_best_match(
                 has_earlier_time
             )
         ) {
-            best_match = iterator;
+            best_match = &order;
         }
     }
 
-    return best_match;
+    if (best_match == nullptr) {
+        return std::nullopt;
+    }
+
+    return best_match->order_id;
 }
 
 void MatchingEngine::execute_limit_trade(
@@ -310,17 +309,29 @@ void MatchingEngine::execute_limit_trade(
 
 void MatchingEngine::process_limit_match(
     LimitOrder& incoming_order,
-    std::vector<LimitOrder>& orders,
-    OrderIterator resting_order
+    OrderId resting_order_id
 )
 {
+    LimitOrder* resting_order =
+        order_manager_.find_order(
+            resting_order_id
+        );
+
+    if (resting_order == nullptr) {
+        return;
+    }
+
     execute_limit_trade(
         incoming_order,
         *resting_order
     );
 
     if (resting_order->is_filled()) {
-        orders.erase(resting_order);
+        static_cast<void>(
+            order_manager_.cancel_order(
+                resting_order_id
+            )
+        );
     }
 }
 
@@ -328,24 +339,20 @@ void MatchingEngine::match_limit_order(
     LimitOrder& incoming_order
 )
 {
-    std::vector<LimitOrder>& orders =
-        order_manager_.orders();
-
     while (incoming_order.remaining_quantity > 0) {
-        OrderIterator best_match =
-            find_best_match(
-                incoming_order,
-                orders
-            );
+        const std::optional<OrderId>
+            best_match_id =
+                find_best_match(
+                    incoming_order
+                );
 
-        if (best_match == orders.end()) {
+        if (!best_match_id.has_value()) {
             break;
         }
 
         process_limit_match(
             incoming_order,
-            orders,
-            best_match
+            *best_match_id
         );
     }
 }

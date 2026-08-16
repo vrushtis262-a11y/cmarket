@@ -9,6 +9,7 @@
 #include "trade_store.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 class MatchingEngine {
@@ -58,9 +59,6 @@ public:
     void clear_trade_history() noexcept;
 
 private:
-    using OrderIterator =
-        std::vector<LimitOrder>::iterator;
-
     [[nodiscard]]
     ExecutionResult execute_market_order(
         OrderSide side,
@@ -79,10 +77,9 @@ private:
     );
 
     [[nodiscard]]
-    OrderIterator find_best_match(
-        const LimitOrder& incoming_order,
-        std::vector<LimitOrder>& orders
-    );
+    std::optional<OrderId> find_best_match(
+        const LimitOrder& incoming_order
+    ) const noexcept;
 
     void execute_limit_trade(
         LimitOrder& incoming_order,
@@ -91,8 +88,7 @@ private:
 
     void process_limit_match(
         LimitOrder& incoming_order,
-        std::vector<LimitOrder>& orders,
-        OrderIterator resting_order
+        OrderId resting_order_id
     );
 
     void rebuild_order_book();

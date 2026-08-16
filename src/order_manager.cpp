@@ -83,12 +83,6 @@ const LimitOrder* OrderManager::find_order(
     return &(*iterator);
 }
 
-std::vector<LimitOrder>&
-OrderManager::orders() noexcept
-{
-    return orders_;
-}
-
 const std::vector<LimitOrder>&
 OrderManager::orders() const noexcept
 {
