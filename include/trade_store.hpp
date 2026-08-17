@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 class TradeStore {
@@ -18,6 +19,18 @@ public:
         std::optional<std::uint64_t> sell_order_id = std::nullopt
     )
     {
+        if (price_ticks <= 0) {
+            throw std::invalid_argument(
+                "Trade price must be positive."
+            );
+        }
+
+        if (quantity <= 0) {
+            throw std::invalid_argument(
+                "Trade quantity must be positive."
+            );
+        }
+
         const Trade trade{
             .aggressor_side = aggressor_side,
             .price_ticks = price_ticks,

@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 TEST(TradeStoreTest, StartsEmpty)
 {
     TradeStore store;
@@ -181,6 +183,117 @@ TEST(TradeStoreTest, SupportsTradesWithoutOrderIds)
 
     EXPECT_FALSE(
         trade.sell_order_id.has_value()
+    );
+}
+
+TEST(TradeStoreTest, RejectsNonPositivePrice)
+{
+    TradeStore store;
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Buy,
+                0,
+                10
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Sell,
+                -1,
+                10
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_TRUE(
+        store.trades().empty()
+    );
+}
+
+TEST(TradeStoreTest, RejectsNonPositiveQuantity)
+{
+    TradeStore store;
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Buy,
+                520'000,
+                0
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Sell,
+                520'000,
+                -1
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_TRUE(
+        store.trades().empty()
+    );
+}
+
+TEST(TradeStoreTest, RejectedTradeDoesNotConsumeIds)
+{
+    TradeStore store;
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Buy,
+                0,
+                10
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            store.record_trade(
+                OrderSide::Sell,
+                520'000,
+                0
+            )
+        ),
+        std::invalid_argument
+    );
+
+    const Trade& trade =
+        store.record_trade(
+            OrderSide::Buy,
+            520'000,
+            10
+        );
+
+    EXPECT_EQ(
+        trade.trade_id,
+        1U
+    );
+
+    EXPECT_EQ(
+        trade.execution_sequence,
+        1U
+    );
+
+    ASSERT_EQ(
+        store.trades().size(),
+        1U
     );
 }
 

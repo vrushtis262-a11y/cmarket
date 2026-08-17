@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <stdexcept>
 
 TEST(MatchingEngineTest, ExecutesSingleLevelMarketSell)
@@ -353,6 +354,109 @@ TEST(MatchingEngineTest, DoesNotRecordTradeForUnfilledOrder)
     EXPECT_TRUE(engine.trade_history().empty());
 }
 
+TEST(MatchingEngineTest, RejectsNonPositiveMarketQuantity)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {
+            PriceLevel{
+                .price_ticks = 530'000,
+                .quantity = 100
+            }
+        },
+        {
+            PriceLevel{
+                .price_ticks = 540'000,
+                .quantity = 100
+            }
+        }
+    );
+
+    MatchingEngine engine(order_book);
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_buy(0)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_buy(-1)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_sell(0)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_sell(-1)
+        ),
+        std::invalid_argument
+    );
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, 530'000);
+    EXPECT_EQ(order_book.bids()[0].quantity, 100);
+
+    ASSERT_EQ(order_book.asks().size(), 1U);
+    EXPECT_EQ(order_book.asks()[0].price_ticks, 540'000);
+    EXPECT_EQ(order_book.asks()[0].quantity, 100);
+
+    EXPECT_TRUE(engine.trade_history().empty());
+}
+
+TEST(MatchingEngineTest, RejectedMarketOrderPreservesExistingTradeHistory)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {
+            PriceLevel{
+                .price_ticks = 530'000,
+                .quantity = 100
+            }
+        },
+        {}
+    );
+
+    MatchingEngine engine(order_book);
+
+    const ExecutionResult result =
+        engine.execute_market_sell(25);
+
+    ASSERT_EQ(result.trades.size(), 1U);
+    ASSERT_EQ(engine.trade_history().size(), 1U);
+
+    const TradeId existing_trade_id =
+        engine.trade_history()[0].trade_id;
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_sell(0)
+        ),
+        std::invalid_argument
+    );
+
+    ASSERT_EQ(engine.trade_history().size(), 1U);
+    EXPECT_EQ(
+        engine.trade_history()[0].trade_id,
+        existing_trade_id
+    );
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, 530'000);
+    EXPECT_EQ(order_book.bids()[0].quantity, 75);
+}
+
 TEST(MatchingEngineTest, PlacesLimitBuyOrder)
 {
     OrderBook order_book;
@@ -518,6 +622,189 @@ TEST(MatchingEngineTest, RejectsNonPositiveLimitQuantity)
     EXPECT_TRUE(
         engine.active_limit_orders().empty()
     );
+}
+
+TEST(MatchingEngineTest, RejectedLimitOrderPreservesExistingState)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId existing_buy =
+        engine.place_limit_buy(520'000, 100);
+
+    const OrderId existing_sell =
+        engine.place_limit_sell(540'000, 80);
+
+    ASSERT_EQ(engine.active_limit_orders().size(), 2U);
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    ASSERT_EQ(order_book.asks().size(), 1U);
+    ASSERT_TRUE(engine.trade_history().empty());
+
+    const SequenceNumber buy_sequence =
+        engine.active_limit_orders()[0].sequence_number;
+
+    const SequenceNumber sell_sequence =
+        engine.active_limit_orders()[1].sequence_number;
+
+    EXPECT_THROW(static_cast<void>(engine.place_limit_buy(0, 50)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(engine.place_limit_sell(550'000, 0)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(engine.place_limit_buy(-1, 50)), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(engine.place_limit_sell(550'000, -1)), std::invalid_argument);
+
+    const auto& orders = engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+
+    EXPECT_EQ(orders[0].order_id, existing_buy);
+    EXPECT_EQ(orders[0].side, OrderSide::Buy);
+    EXPECT_EQ(orders[0].price_ticks, 520'000);
+    EXPECT_EQ(orders[0].original_quantity, 100);
+    EXPECT_EQ(orders[0].remaining_quantity, 100);
+    EXPECT_EQ(orders[0].sequence_number, buy_sequence);
+
+    EXPECT_EQ(orders[1].order_id, existing_sell);
+    EXPECT_EQ(orders[1].side, OrderSide::Sell);
+    EXPECT_EQ(orders[1].price_ticks, 540'000);
+    EXPECT_EQ(orders[1].original_quantity, 80);
+    EXPECT_EQ(orders[1].remaining_quantity, 80);
+    EXPECT_EQ(orders[1].sequence_number, sell_sequence);
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, 520'000);
+    EXPECT_EQ(order_book.bids()[0].quantity, 100);
+
+    ASSERT_EQ(order_book.asks().size(), 1U);
+    EXPECT_EQ(order_book.asks()[0].price_ticks, 540'000);
+    EXPECT_EQ(order_book.asks()[0].quantity, 80);
+
+    EXPECT_TRUE(engine.trade_history().empty());
+}
+
+TEST(MatchingEngineTest, RejectsMinimumInt64InputsWithoutMutatingState)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId order_id =
+        engine.place_limit_buy(520'000, 100);
+
+    const auto minimum =
+        std::numeric_limits<std::int64_t>::min();
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_buy(minimum)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.execute_market_sell(minimum)
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_buy(
+                minimum,
+                50
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.place_limit_sell(
+                540'000,
+                minimum
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.modify_order(
+                order_id,
+                minimum,
+                100
+            )
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        static_cast<void>(
+            engine.modify_order(
+                order_id,
+                520'000,
+                minimum
+            )
+        ),
+        std::invalid_argument
+    );
+
+    const auto& orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(orders.size(), 1U);
+    EXPECT_EQ(orders[0].order_id, order_id);
+    EXPECT_EQ(orders[0].price_ticks, 520'000);
+    EXPECT_EQ(orders[0].original_quantity, 100);
+    EXPECT_EQ(orders[0].remaining_quantity, 100);
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, 520'000);
+    EXPECT_EQ(order_book.bids()[0].quantity, 100);
+
+    EXPECT_TRUE(order_book.asks().empty());
+    EXPECT_TRUE(engine.trade_history().empty());
+}
+
+TEST(MatchingEngineTest, AcceptsMaximumPositiveInt64Values)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const auto maximum =
+        std::numeric_limits<std::int64_t>::max();
+
+    const OrderId order_id =
+        engine.place_limit_buy(
+            maximum,
+            maximum
+        );
+
+    ASSERT_EQ(engine.active_limit_orders().size(), 1U);
+
+    const LimitOrder& order =
+        engine.active_limit_orders()[0];
+
+    EXPECT_EQ(order.order_id, order_id);
+    EXPECT_EQ(order.price_ticks, maximum);
+    EXPECT_EQ(order.original_quantity, maximum);
+    EXPECT_EQ(order.remaining_quantity, maximum);
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, maximum);
+    EXPECT_EQ(order_book.bids()[0].quantity, maximum);
+
+    const ExecutionResult result =
+        engine.execute_market_buy(maximum);
+
+    EXPECT_EQ(result.requested_quantity, maximum);
+    EXPECT_EQ(result.executed_quantity, 0);
+    EXPECT_EQ(result.remaining_quantity, maximum);
+    EXPECT_TRUE(result.unfilled());
+
+    ASSERT_EQ(engine.active_limit_orders().size(), 1U);
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_EQ(order_book.bids()[0].price_ticks, maximum);
+    EXPECT_EQ(order_book.bids()[0].quantity, maximum);
+    EXPECT_TRUE(engine.trade_history().empty());
 }
 
 TEST(MatchingEngineTest, CancelsExistingOrder)
