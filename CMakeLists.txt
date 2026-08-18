@@ -277,6 +277,21 @@ if(BUILD_TESTING)
     cmarket_enable_sanitizers(order_manager_tests)
 
     add_executable(
+        exception_safety_tests
+        tests/exception_safety_tests.cpp
+    )
+
+    target_link_libraries(
+        exception_safety_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(exception_safety_tests)
+    cmarket_enable_sanitizers(exception_safety_tests)
+
+    add_executable(
         limit_order_tests
         tests/limit_order_tests.cpp
     )
@@ -325,6 +340,7 @@ if(BUILD_TESTING)
     gtest_discover_tests(trade_persistence_tests)
     gtest_discover_tests(trade_store_tests)
     gtest_discover_tests(order_manager_tests)
+    gtest_discover_tests(exception_safety_tests)
     gtest_discover_tests(limit_order_tests)
     gtest_discover_tests(order_id_generator_tests)
 endif()

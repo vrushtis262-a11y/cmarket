@@ -2,10 +2,34 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
+
+namespace {
+
+void add_quantity_checked(
+    std::int64_t& total,
+    std::int64_t quantity
+)
+{
+    if (
+        quantity >
+        std::numeric_limits<std::int64_t>::max() -
+            total
+    ) {
+        throw std::overflow_error(
+            "Order-book quantity aggregation overflow."
+        );
+    }
+
+    total += quantity;
+}
+
+} // namespace
 
 MatchingEngine::MatchingEngine(
     OrderBook& order_book
@@ -25,93 +49,110 @@ ExecutionResult MatchingEngine::execute_market_order(
         );
     }
 
-    ExecutionResult result{
-        .side = side,
-        .requested_quantity = quantity,
-        .executed_quantity = 0,
-        .remaining_quantity = quantity,
-        .average_price_ticks = std::nullopt,
-        .trades = {}
-    };
+    OrderBook order_book_backup =
+        order_book_;
 
-    long double weighted_price_total = 0.0L;
+    TradeStore trade_store_backup =
+        trade_store_;
 
-    while (result.remaining_quantity > 0) {
-        const std::vector<PriceLevel>& levels =
-            side == OrderSide::Buy
-                ? order_book_.asks()
-                : order_book_.bids();
+    try {
+        ExecutionResult result{
+            .side = side,
+            .requested_quantity = quantity,
+            .executed_quantity = 0,
+            .remaining_quantity = quantity,
+            .average_price_ticks = std::nullopt,
+            .trades = {}
+        };
 
-        if (levels.empty()) {
-            break;
+        long double weighted_price_total = 0.0L;
+
+        while (result.remaining_quantity > 0) {
+            const std::vector<PriceLevel>& levels =
+                side == OrderSide::Buy
+                    ? order_book_.asks()
+                    : order_book_.bids();
+
+            if (levels.empty()) {
+                break;
+            }
+
+            const PriceLevel best_level =
+                levels.front();
+
+            const std::int64_t executed_at_level =
+                std::min(
+                    result.remaining_quantity,
+                    best_level.quantity
+                );
+
+            const Trade& recorded_trade =
+                trade_store_.record_trade(
+                    side,
+                    best_level.price_ticks,
+                    executed_at_level
+                );
+
+            result.trades.push_back(
+                recorded_trade
+            );
+
+            result.executed_quantity +=
+                executed_at_level;
+
+            result.remaining_quantity -=
+                executed_at_level;
+
+            weighted_price_total +=
+                static_cast<long double>(
+                    best_level.price_ticks
+                ) *
+                static_cast<long double>(
+                    executed_at_level
+                );
+
+            const std::int64_t remaining_at_level =
+                best_level.quantity -
+                executed_at_level;
+
+            if (side == OrderSide::Buy) {
+                order_book_.update_ask(
+                    best_level.price_ticks,
+                    remaining_at_level
+                );
+            }
+            else {
+                order_book_.update_bid(
+                    best_level.price_ticks,
+                    remaining_at_level
+                );
+            }
         }
 
-        const PriceLevel best_level =
-            levels.front();
+        if (result.executed_quantity > 0) {
+            const long double average_price =
+                weighted_price_total /
+                static_cast<long double>(
+                    result.executed_quantity
+                );
 
-        const std::int64_t executed_at_level =
-            std::min(
-                result.remaining_quantity,
-                best_level.quantity
-            );
-
-        const Trade& recorded_trade =
-            trade_store_.record_trade(
-                side,
-                best_level.price_ticks,
-                executed_at_level
-            );
-
-        result.trades.push_back(
-            recorded_trade
-        );
-
-        result.executed_quantity +=
-            executed_at_level;
-
-        result.remaining_quantity -=
-            executed_at_level;
-
-        weighted_price_total +=
-            static_cast<long double>(
-                best_level.price_ticks
-            ) *
-            static_cast<long double>(
-                executed_at_level
-            );
-
-        const std::int64_t remaining_at_level =
-            best_level.quantity -
-            executed_at_level;
-
-        if (side == OrderSide::Buy) {
-            order_book_.update_ask(
-                best_level.price_ticks,
-                remaining_at_level
-            );
+            result.average_price_ticks =
+                static_cast<std::int64_t>(
+                    average_price
+                );
         }
-        else {
-            order_book_.update_bid(
-                best_level.price_ticks,
-                remaining_at_level
-            );
-        }
+
+        return result;
     }
+    catch (...) {
+        order_book_ =
+            std::move(order_book_backup);
 
-    if (result.executed_quantity > 0) {
-        const long double average_price =
-            weighted_price_total /
-            static_cast<long double>(
-                result.executed_quantity
-            );
+        trade_store_ =
+            std::move(trade_store_backup);
 
-        result.average_price_ticks =
-            static_cast<std::int64_t>(
-                average_price
-            );
+        throw;
     }
-
-    return result;
 }
 
 ExecutionResult MatchingEngine::execute_market_buy(
@@ -152,30 +193,70 @@ OrderId MatchingEngine::place_limit_order(
         );
     }
 
-    const OrderId order_id =
-        order_id_generator_.next();
+    OrderBook order_book_backup =
+        order_book_;
 
-    LimitOrder incoming_order{
-        .order_id = order_id,
-        .side = side,
-        .price_ticks = price_ticks,
-        .original_quantity = quantity,
-        .remaining_quantity = quantity,
-        .sequence_number =
-            next_sequence_number_++
-    };
+    OrderIdGenerator order_id_generator_backup =
+        order_id_generator_;
 
-    match_limit_order(incoming_order);
+    const SequenceNumber
+        sequence_number_backup =
+            next_sequence_number_;
 
-    if (!incoming_order.is_filled()) {
-        order_manager_.add_order(
+    OrderManager order_manager_backup =
+        order_manager_;
+
+    TradeStore trade_store_backup =
+        trade_store_;
+
+    try {
+        const OrderId order_id =
+            order_id_generator_.next();
+
+        LimitOrder incoming_order{
+            .order_id = order_id,
+            .side = side,
+            .price_ticks = price_ticks,
+            .original_quantity = quantity,
+            .remaining_quantity = quantity,
+            .sequence_number =
+                next_sequence_number_++
+        };
+
+        match_limit_order(
             incoming_order
         );
+
+        if (!incoming_order.is_filled()) {
+            order_manager_.add_order(
+                incoming_order
+            );
+        }
+
+        rebuild_order_book();
+
+        return order_id;
     }
+    catch (...) {
+        order_book_ =
+            std::move(order_book_backup);
 
-    rebuild_order_book();
+        order_id_generator_ =
+            std::move(
+                order_id_generator_backup
+            );
 
-    return order_id;
+        next_sequence_number_ =
+            sequence_number_backup;
+
+        order_manager_ =
+            std::move(order_manager_backup);
+
+        trade_store_ =
+            std::move(trade_store_backup);
+
+        throw;
+    }
 }
 
 OrderId MatchingEngine::place_limit_buy(
@@ -339,7 +420,9 @@ void MatchingEngine::match_limit_order(
     LimitOrder& incoming_order
 )
 {
-    while (incoming_order.remaining_quantity > 0) {
+    while (
+        incoming_order.remaining_quantity > 0
+    ) {
         const std::optional<OrderId>
             best_match_id =
                 find_best_match(
@@ -361,18 +444,43 @@ bool MatchingEngine::cancel_order(
     OrderId order_id
 )
 {
-    const bool cancelled =
-        order_manager_.cancel_order(
+    if (
+        order_manager_.find_order(
             order_id
-        );
-
-    if (!cancelled) {
+        ) == nullptr
+    ) {
         return false;
     }
 
-    rebuild_order_book();
+    OrderBook order_book_backup =
+        order_book_;
 
-    return true;
+    OrderManager order_manager_backup =
+        order_manager_;
+
+    try {
+        const bool cancelled =
+            order_manager_.cancel_order(
+                order_id
+            );
+
+        if (!cancelled) {
+            return false;
+        }
+
+        rebuild_order_book();
+
+        return true;
+    }
+    catch (...) {
+        order_book_ =
+            std::move(order_book_backup);
+
+        order_manager_ =
+            std::move(order_manager_backup);
+
+        throw;
+    }
 }
 
 bool MatchingEngine::modify_order(
@@ -402,53 +510,83 @@ bool MatchingEngine::modify_order(
         return false;
     }
 
-    LimitOrder modified_order =
-        *existing_order;
+    OrderBook order_book_backup =
+        order_book_;
 
-    static_cast<void>(
-        order_manager_.cancel_order(
-            order_id
-        )
-    );
+    const SequenceNumber
+        sequence_number_backup =
+            next_sequence_number_;
 
-    const bool price_changed =
-        new_price_ticks !=
-        modified_order.price_ticks;
+    OrderManager order_manager_backup =
+        order_manager_;
 
-    const bool quantity_increased =
-        new_quantity >
-        modified_order.remaining_quantity;
+    TradeStore trade_store_backup =
+        trade_store_;
 
-    if (
-        price_changed ||
-        quantity_increased
-    ) {
-        modified_order.sequence_number =
-            next_sequence_number_++;
-    }
+    try {
+        LimitOrder modified_order =
+            *existing_order;
 
-    modified_order.price_ticks =
-        new_price_ticks;
+        static_cast<void>(
+            order_manager_.cancel_order(
+                order_id
+            )
+        );
 
-    modified_order.original_quantity =
-        new_quantity;
+        const bool price_changed =
+            new_price_ticks !=
+            modified_order.price_ticks;
 
-    modified_order.remaining_quantity =
-        new_quantity;
+        const bool quantity_increased =
+            new_quantity >
+            modified_order.remaining_quantity;
 
-    match_limit_order(
-        modified_order
-    );
+        if (
+            price_changed ||
+            quantity_increased
+        ) {
+            modified_order.sequence_number =
+                next_sequence_number_++;
+        }
 
-    if (!modified_order.is_filled()) {
-        order_manager_.add_order(
+        modified_order.price_ticks =
+            new_price_ticks;
+
+        modified_order.original_quantity =
+            new_quantity;
+
+        modified_order.remaining_quantity =
+            new_quantity;
+
+        match_limit_order(
             modified_order
         );
+
+        if (!modified_order.is_filled()) {
+            order_manager_.add_order(
+                modified_order
+            );
+        }
+
+        rebuild_order_book();
+
+        return true;
     }
+    catch (...) {
+        order_book_ =
+            std::move(order_book_backup);
 
-    rebuild_order_book();
+        next_sequence_number_ =
+            sequence_number_backup;
 
-    return true;
+        order_manager_ =
+            std::move(order_manager_backup);
+
+        trade_store_ =
+            std::move(trade_store_backup);
+
+        throw;
+    }
 }
 
 void MatchingEngine::rebuild_order_book()
@@ -473,14 +611,26 @@ void MatchingEngine::rebuild_order_book()
         }
 
         if (order.side == OrderSide::Buy) {
-            bid_quantities[
-                order.price_ticks
-            ] += order.remaining_quantity;
+            std::int64_t& total_quantity =
+                bid_quantities[
+                    order.price_ticks
+                ];
+
+            add_quantity_checked(
+                total_quantity,
+                order.remaining_quantity
+            );
         }
         else {
-            ask_quantities[
-                order.price_ticks
-            ] += order.remaining_quantity;
+            std::int64_t& total_quantity =
+                ask_quantities[
+                    order.price_ticks
+                ];
+
+            add_quantity_checked(
+                total_quantity,
+                order.remaining_quantity
+            );
         }
     }
 
