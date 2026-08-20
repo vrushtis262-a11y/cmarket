@@ -307,6 +307,20 @@ if(BUILD_TESTING)
     cmarket_enable_sanitizers(randomized_matching_tests)
 
     add_executable(
+        matching_engine_fuzz
+        tests/matching_engine_fuzz.cpp
+    )
+
+    target_link_libraries(
+        matching_engine_fuzz
+        PRIVATE
+        cmarket_matching_engine
+    )
+
+    cmarket_enable_warnings(matching_engine_fuzz)
+    cmarket_enable_sanitizers(matching_engine_fuzz)
+
+    add_executable(
         limit_order_tests
         tests/limit_order_tests.cpp
     )
