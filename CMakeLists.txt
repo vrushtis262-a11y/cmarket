@@ -177,6 +177,26 @@ if(BUILD_TESTING)
     cmarket_enable_sanitizers(order_book_tests)
 
     add_executable(
+        order_book_exception_safety_tests
+        tests/order_book_exception_safety_tests.cpp
+    )
+
+    target_link_libraries(
+        order_book_exception_safety_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        order_book_exception_safety_tests
+    )
+
+    cmarket_enable_sanitizers(
+        order_book_exception_safety_tests
+    )
+
+    add_executable(
         execution_tests
         tests/execution_tests.cpp
     )
@@ -363,6 +383,7 @@ if(BUILD_TESTING)
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
+    gtest_discover_tests(order_book_exception_safety_tests)
     gtest_discover_tests(execution_tests)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)

@@ -495,6 +495,30 @@ bool MatchingEngine::modify_order(
         return false;
     }
 
+    LimitOrder modified_order =
+        *existing_order;
+
+    const bool price_changed =
+        new_price_ticks !=
+        modified_order.price_ticks;
+
+    const bool quantity_increased =
+        new_quantity >
+        modified_order.remaining_quantity;
+
+    const bool loses_priority =
+        price_changed ||
+        quantity_increased;
+
+    modified_order.price_ticks =
+        new_price_ticks;
+
+    modified_order.original_quantity =
+        new_quantity;
+
+    modified_order.remaining_quantity =
+        new_quantity;
+
     OrderBook order_book_backup =
         order_book_;
 
@@ -509,39 +533,19 @@ bool MatchingEngine::modify_order(
         trade_store_;
 
     try {
-        LimitOrder modified_order =
-            *existing_order;
-
-        static_cast<void>(
-            order_manager_.cancel_order(
-                order_id
-            )
-        );
-
-        const bool price_changed =
-            new_price_ticks !=
-            modified_order.price_ticks;
-
-        const bool quantity_increased =
-            new_quantity >
-            modified_order.remaining_quantity;
-
-        if (
-            price_changed ||
-            quantity_increased
-        ) {
+        if (loses_priority) {
             modified_order.sequence_number =
                 next_sequence_number_++;
         }
 
-        modified_order.price_ticks =
-            new_price_ticks;
+        const bool removed =
+            order_manager_.cancel_order(
+                order_id
+            );
 
-        modified_order.original_quantity =
-            new_quantity;
-
-        modified_order.remaining_quantity =
-            new_quantity;
+        if (!removed) {
+            return false;
+        }
 
         match_limit_order(
             modified_order
