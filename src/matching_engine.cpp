@@ -1,4 +1,5 @@
 #include "matching_engine.hpp"
+#include "validation.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -43,11 +44,9 @@ ExecutionResult MatchingEngine::execute_market_order(
     std::int64_t quantity
 )
 {
-    if (quantity <= 0) {
-        throw std::invalid_argument(
-            "Market order quantity must be positive."
-        );
-    }
+    validation::validate_market_order(
+        quantity
+    );
 
     OrderBook order_book_backup =
         order_book_;
@@ -181,17 +180,10 @@ OrderId MatchingEngine::place_limit_order(
     std::int64_t quantity
 )
 {
-    if (price_ticks <= 0) {
-        throw std::invalid_argument(
-            "Limit price must be positive."
-        );
-    }
-
-    if (quantity <= 0) {
-        throw std::invalid_argument(
-            "Limit quantity must be positive."
-        );
-    }
+    validation::validate_limit_order(
+        price_ticks,
+        quantity
+    );
 
     OrderBook order_book_backup =
         order_book_;
@@ -489,17 +481,10 @@ bool MatchingEngine::modify_order(
     std::int64_t new_quantity
 )
 {
-    if (new_price_ticks <= 0) {
-        throw std::invalid_argument(
-            "Modified limit price must be positive."
-        );
-    }
-
-    if (new_quantity <= 0) {
-        throw std::invalid_argument(
-            "Modified limit quantity must be positive."
-        );
-    }
+    validation::validate_modify_order(
+        new_price_ticks,
+        new_quantity
+    );
 
     const LimitOrder* existing_order =
         order_manager_.find_order(

@@ -31,6 +31,10 @@ public:
     orders() const noexcept;
 
 private:
+    static void validate_order(
+        const LimitOrder& order
+    );
+
     std::vector<LimitOrder> orders_;
 };
 

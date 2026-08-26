@@ -1,11 +1,63 @@
 #include "order_manager.hpp"
+#include "validation.hpp"
 
 #include <algorithm>
+#include <stdexcept>
+
+void OrderManager::validate_order(
+    const LimitOrder& order
+)
+{
+    if (order.order_id == 0) {
+        throw std::invalid_argument(
+            "Order ID must be non-zero."
+        );
+    }
+
+    validation::require_positive(
+        order.price_ticks,
+        "Order price"
+    );
+
+    validation::require_positive(
+        order.original_quantity,
+        "Order original quantity"
+    );
+
+    validation::require_positive(
+        order.remaining_quantity,
+        "Active order remaining quantity"
+    );
+
+    if (
+        order.remaining_quantity >
+        order.original_quantity
+    ) {
+        throw std::invalid_argument(
+            "Order remaining quantity cannot exceed "
+            "original quantity."
+        );
+    }
+
+    if (order.sequence_number == 0) {
+        throw std::invalid_argument(
+            "Order sequence number must be non-zero."
+        );
+    }
+}
 
 void OrderManager::add_order(
     const LimitOrder& order
 )
 {
+    validate_order(order);
+
+    if (find_order(order.order_id) != nullptr) {
+        throw std::invalid_argument(
+            "Order ID already exists."
+        );
+    }
+
     orders_.push_back(order);
 }
 

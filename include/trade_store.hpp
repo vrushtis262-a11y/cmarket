@@ -2,10 +2,10 @@
 #define CMARKET_TRADE_STORE_HPP
 
 #include "execution.hpp"
+#include "validation.hpp"
 
 #include <cstdint>
 #include <optional>
-#include <stdexcept>
 #include <vector>
 
 class TradeStore {
@@ -19,17 +19,10 @@ public:
         std::optional<std::uint64_t> sell_order_id = std::nullopt
     )
     {
-        if (price_ticks <= 0) {
-            throw std::invalid_argument(
-                "Trade price must be positive."
-            );
-        }
-
-        if (quantity <= 0) {
-            throw std::invalid_argument(
-                "Trade quantity must be positive."
-            );
-        }
+        validation::validate_trade(
+            price_ticks,
+            quantity
+        );
 
         const Trade trade{
             .aggressor_side = aggressor_side,
