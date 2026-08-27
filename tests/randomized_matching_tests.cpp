@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <random>
 #include <set>
@@ -16,11 +17,35 @@ constexpr std::int64_t maximum_price = 550'000;
 constexpr std::int64_t minimum_quantity = 1;
 constexpr std::int64_t maximum_quantity = 200;
 
-enum class RandomOperation {
+enum class RandomOperationType {
     PlaceBuy,
     PlaceSell,
+    MarketBuy,
+    MarketSell,
     Cancel,
     Modify
+};
+
+struct RandomOperation {
+    RandomOperationType type;
+    std::int64_t price_ticks = 0;
+    std::int64_t quantity = 0;
+    std::size_t active_order_index = 0;
+
+    [[nodiscard]]
+    bool operator==(
+        const RandomOperation& other
+    ) const noexcept
+    {
+        return type ==
+                   other.type &&
+               price_ticks ==
+                   other.price_ticks &&
+               quantity ==
+                   other.quantity &&
+               active_order_index ==
+                   other.active_order_index;
+    }
 };
 
 std::int64_t random_price(
@@ -49,35 +74,91 @@ std::int64_t random_quantity(
     return distribution(generator);
 }
 
-RandomOperation random_operation(
+RandomOperationType random_operation_type(
     std::mt19937_64& generator
 )
 {
     std::uniform_int_distribution<int>
-        distribution(0, 3);
+        distribution(0, 5);
 
-    return static_cast<RandomOperation>(
+    return static_cast<RandomOperationType>(
         distribution(generator)
     );
 }
 
-OrderId random_active_order_id(
-    const MatchingEngine& engine,
+RandomOperation generate_random_operation(
     std::mt19937_64& generator
 )
 {
-    const auto& orders =
-        engine.active_limit_orders();
+    RandomOperation operation{
+        .type = random_operation_type(
+            generator
+        )
+    };
 
-    std::uniform_int_distribution<std::size_t>
-        distribution(
-            0,
-            orders.size() - 1
+    switch (operation.type) {
+    case RandomOperationType::PlaceBuy:
+    case RandomOperationType::PlaceSell:
+    case RandomOperationType::Modify:
+        operation.price_ticks =
+            random_price(generator);
+
+        operation.quantity =
+            random_quantity(generator);
+        break;
+
+    case RandomOperationType::MarketBuy:
+    case RandomOperationType::MarketSell:
+        operation.quantity =
+            random_quantity(generator);
+        break;
+
+    case RandomOperationType::Cancel:
+        break;
+    }
+
+    if (
+        operation.type ==
+            RandomOperationType::Cancel ||
+        operation.type ==
+            RandomOperationType::Modify
+    ) {
+        operation.active_order_index =
+            static_cast<std::size_t>(
+                generator()
+            );
+    }
+
+    return operation;
+}
+
+std::vector<RandomOperation>
+generate_random_operation_sequence(
+    std::uint64_t seed,
+    std::size_t operation_count
+)
+{
+    std::mt19937_64 generator(seed);
+
+    std::vector<RandomOperation> operations;
+
+    operations.reserve(
+        operation_count
+    );
+
+    for (
+        std::size_t index = 0;
+        index < operation_count;
+        ++index
+    ) {
+        operations.push_back(
+            generate_random_operation(
+                generator
+            )
         );
+    }
 
-    return orders[
-        distribution(generator)
-    ].order_id;
+    return operations;
 }
 
 void expect_active_orders_valid(
@@ -336,19 +417,6 @@ void expect_trade_history_valid(
             0
         );
 
-        ASSERT_TRUE(
-            trade.buy_order_id.has_value()
-        );
-
-        ASSERT_TRUE(
-            trade.sell_order_id.has_value()
-        );
-
-        EXPECT_NE(
-            *trade.buy_order_id,
-            *trade.sell_order_id
-        );
-
         previous_trade_id =
             trade.trade_id;
 
@@ -357,7 +425,7 @@ void expect_trade_history_valid(
     }
 }
 
-void expect_engine_invariants(
+void assert_engine_invariants(
     const MatchingEngine& engine,
     const OrderBook& order_book
 )
@@ -384,6 +452,100 @@ void expect_engine_invariants(
     );
 }
 
+void execute_random_operation(
+    const RandomOperation& operation,
+    MatchingEngine& engine
+)
+{
+    switch (operation.type) {
+    case RandomOperationType::PlaceBuy:
+        static_cast<void>(
+            engine.place_limit_buy(
+                operation.price_ticks,
+                operation.quantity
+            )
+        );
+        break;
+
+    case RandomOperationType::PlaceSell:
+        static_cast<void>(
+            engine.place_limit_sell(
+                operation.price_ticks,
+                operation.quantity
+            )
+        );
+        break;
+
+    case RandomOperationType::MarketBuy:
+        static_cast<void>(
+            engine.execute_market_buy(
+                operation.quantity
+            )
+        );
+        break;
+
+    case RandomOperationType::MarketSell:
+        static_cast<void>(
+            engine.execute_market_sell(
+                operation.quantity
+            )
+        );
+        break;
+
+    case RandomOperationType::Cancel:
+    {
+        const auto& orders =
+            engine.active_limit_orders();
+
+        if (orders.empty()) {
+            break;
+        }
+
+        const std::size_t index =
+            operation.active_order_index %
+            orders.size();
+
+        const OrderId order_id =
+            orders[index].order_id;
+
+        EXPECT_TRUE(
+            engine.cancel_order(
+                order_id
+            )
+        );
+
+        break;
+    }
+
+    case RandomOperationType::Modify:
+    {
+        const auto& orders =
+            engine.active_limit_orders();
+
+        if (orders.empty()) {
+            break;
+        }
+
+        const std::size_t index =
+            operation.active_order_index %
+            orders.size();
+
+        const OrderId order_id =
+            orders[index].order_id;
+
+        EXPECT_TRUE(
+            engine.modify_order(
+                order_id,
+                operation.price_ticks,
+                operation.quantity
+            )
+        );
+
+        break;
+    }
+    }
+}
+
 void run_randomized_sequence(
     std::uint64_t seed,
     std::size_t operation_count
@@ -392,392 +554,36 @@ void run_randomized_sequence(
     OrderBook order_book;
     MatchingEngine engine(order_book);
 
-    std::mt19937_64 generator(seed);
+    const std::vector<RandomOperation>
+        operations =
+            generate_random_operation_sequence(
+                seed,
+                operation_count
+            );
 
     for (
-        std::size_t operation_index = 0;
-        operation_index < operation_count;
-        ++operation_index
+        const RandomOperation& operation :
+        operations
     ) {
-        const RandomOperation operation =
-            random_operation(generator);
+        execute_random_operation(
+            operation,
+            engine
+        );
 
-        switch (operation) {
-        case RandomOperation::PlaceBuy:
-            static_cast<void>(
-                engine.place_limit_buy(
-                    random_price(generator),
-                    random_quantity(generator)
-                )
-            );
-            break;
-
-        case RandomOperation::PlaceSell:
-            static_cast<void>(
-                engine.place_limit_sell(
-                    random_price(generator),
-                    random_quantity(generator)
-                )
-            );
-            break;
-
-        case RandomOperation::Cancel:
-            if (
-                engine.active_limit_orders()
-                    .empty()
-            ) {
-                break;
-            }
-
-            EXPECT_TRUE(
-                engine.cancel_order(
-                    random_active_order_id(
-                        engine,
-                        generator
-                    )
-                )
-            );
-            break;
-
-        case RandomOperation::Modify:
-            if (
-                engine.active_limit_orders()
-                    .empty()
-            ) {
-                break;
-            }
-
-            EXPECT_TRUE(
-                engine.modify_order(
-                    random_active_order_id(
-                        engine,
-                        generator
-                    ),
-                    random_price(generator),
-                    random_quantity(generator)
-                )
-            );
-            break;
-        }
-
-        expect_engine_invariants(
+        assert_engine_invariants(
             engine,
             order_book
         );
     }
 }
 
-} // namespace
-
-TEST(
-    RandomizedMatchingTest,
-    MaintainsInvariantsAcrossOneThousandOperations
+void expect_same_engine_state(
+    const MatchingEngine& first_engine,
+    const OrderBook& first_order_book,
+    const MatchingEngine& second_engine,
+    const OrderBook& second_order_book
 )
 {
-    run_randomized_sequence(
-        0xC0FFEEULL,
-        1'000
-    );
-}
-
-TEST(
-    RandomizedMatchingTest,
-    MaintainsInvariantsWithAlternateSeed
-)
-{
-    run_randomized_sequence(
-        0xBADC0DEULL,
-        1'000
-    );
-}
-
-TEST(
-    RandomizedMatchingTest,
-    MaintainsInvariantsWithThirdSeed
-)
-{
-    run_randomized_sequence(
-        0x123456789ULL,
-        1'000
-    );
-}
-
-TEST(
-    RandomizedMatchingTest,
-    SameSeedProducesSameFinalState
-)
-{
-    constexpr std::uint64_t seed =
-        0xDEADBEEFULL;
-
-    constexpr std::size_t
-        operation_count = 500;
-
-    OrderBook first_order_book;
-    MatchingEngine first_engine(
-        first_order_book
-    );
-
-    OrderBook second_order_book;
-    MatchingEngine second_engine(
-        second_order_book
-    );
-
-    std::mt19937_64 first_generator(
-        seed
-    );
-
-    std::mt19937_64 second_generator(
-        seed
-    );
-
-    for (
-        std::size_t operation_index = 0;
-        operation_index < operation_count;
-        ++operation_index
-    ) {
-        const RandomOperation first_operation =
-            random_operation(
-                first_generator
-            );
-
-        const RandomOperation second_operation =
-            random_operation(
-                second_generator
-            );
-
-        ASSERT_EQ(
-            static_cast<int>(first_operation),
-            static_cast<int>(second_operation)
-        );
-
-        switch (first_operation) {
-        case RandomOperation::PlaceBuy:
-        {
-            const std::int64_t first_price =
-                random_price(
-                    first_generator
-                );
-
-            const std::int64_t second_price =
-                random_price(
-                    second_generator
-                );
-
-            const std::int64_t first_quantity =
-                random_quantity(
-                    first_generator
-                );
-
-            const std::int64_t second_quantity =
-                random_quantity(
-                    second_generator
-                );
-
-            ASSERT_EQ(
-                first_price,
-                second_price
-            );
-
-            ASSERT_EQ(
-                first_quantity,
-                second_quantity
-            );
-
-            EXPECT_EQ(
-                first_engine.place_limit_buy(
-                    first_price,
-                    first_quantity
-                ),
-                second_engine.place_limit_buy(
-                    second_price,
-                    second_quantity
-                )
-            );
-
-            break;
-        }
-
-        case RandomOperation::PlaceSell:
-        {
-            const std::int64_t first_price =
-                random_price(
-                    first_generator
-                );
-
-            const std::int64_t second_price =
-                random_price(
-                    second_generator
-                );
-
-            const std::int64_t first_quantity =
-                random_quantity(
-                    first_generator
-                );
-
-            const std::int64_t second_quantity =
-                random_quantity(
-                    second_generator
-                );
-
-            ASSERT_EQ(
-                first_price,
-                second_price
-            );
-
-            ASSERT_EQ(
-                first_quantity,
-                second_quantity
-            );
-
-            EXPECT_EQ(
-                first_engine.place_limit_sell(
-                    first_price,
-                    first_quantity
-                ),
-                second_engine.place_limit_sell(
-                    second_price,
-                    second_quantity
-                )
-            );
-
-            break;
-        }
-
-        case RandomOperation::Cancel:
-            if (
-                first_engine.active_limit_orders()
-                    .empty()
-            ) {
-                ASSERT_TRUE(
-                    second_engine
-                        .active_limit_orders()
-                        .empty()
-                );
-
-                break;
-            }
-
-            {
-                const OrderId first_order_id =
-                    random_active_order_id(
-                        first_engine,
-                        first_generator
-                    );
-
-                const OrderId second_order_id =
-                    random_active_order_id(
-                        second_engine,
-                        second_generator
-                    );
-
-                ASSERT_EQ(
-                    first_order_id,
-                    second_order_id
-                );
-
-                EXPECT_EQ(
-                    first_engine.cancel_order(
-                        first_order_id
-                    ),
-                    second_engine.cancel_order(
-                        second_order_id
-                    )
-                );
-            }
-
-            break;
-
-        case RandomOperation::Modify:
-            if (
-                first_engine.active_limit_orders()
-                    .empty()
-            ) {
-                ASSERT_TRUE(
-                    second_engine
-                        .active_limit_orders()
-                        .empty()
-                );
-
-                break;
-            }
-
-            {
-                const OrderId first_order_id =
-                    random_active_order_id(
-                        first_engine,
-                        first_generator
-                    );
-
-                const OrderId second_order_id =
-                    random_active_order_id(
-                        second_engine,
-                        second_generator
-                    );
-
-                const std::int64_t first_price =
-                    random_price(
-                        first_generator
-                    );
-
-                const std::int64_t second_price =
-                    random_price(
-                        second_generator
-                    );
-
-                const std::int64_t first_quantity =
-                    random_quantity(
-                        first_generator
-                    );
-
-                const std::int64_t second_quantity =
-                    random_quantity(
-                        second_generator
-                    );
-
-                ASSERT_EQ(
-                    first_order_id,
-                    second_order_id
-                );
-
-                ASSERT_EQ(
-                    first_price,
-                    second_price
-                );
-
-                ASSERT_EQ(
-                    first_quantity,
-                    second_quantity
-                );
-
-                EXPECT_EQ(
-                    first_engine.modify_order(
-                        first_order_id,
-                        first_price,
-                        first_quantity
-                    ),
-                    second_engine.modify_order(
-                        second_order_id,
-                        second_price,
-                        second_quantity
-                    )
-                );
-            }
-
-            break;
-        }
-
-        expect_engine_invariants(
-            first_engine,
-            first_order_book
-        );
-
-        expect_engine_invariants(
-            second_engine,
-            second_order_book
-        );
-    }
-
     const auto& first_orders =
         first_engine.active_limit_orders();
 
@@ -810,6 +616,11 @@ TEST(
         );
 
         EXPECT_EQ(
+            first_orders[index].original_quantity,
+            second_orders[index].original_quantity
+        );
+
+        EXPECT_EQ(
             first_orders[index].remaining_quantity,
             second_orders[index].remaining_quantity
         );
@@ -817,6 +628,60 @@ TEST(
         EXPECT_EQ(
             first_orders[index].sequence_number,
             second_orders[index].sequence_number
+        );
+    }
+
+    const auto& first_bids =
+        first_order_book.bids();
+
+    const auto& second_bids =
+        second_order_book.bids();
+
+    ASSERT_EQ(
+        first_bids.size(),
+        second_bids.size()
+    );
+
+    for (
+        std::size_t index = 0;
+        index < first_bids.size();
+        ++index
+    ) {
+        EXPECT_EQ(
+            first_bids[index].price_ticks,
+            second_bids[index].price_ticks
+        );
+
+        EXPECT_EQ(
+            first_bids[index].quantity,
+            second_bids[index].quantity
+        );
+    }
+
+    const auto& first_asks =
+        first_order_book.asks();
+
+    const auto& second_asks =
+        second_order_book.asks();
+
+    ASSERT_EQ(
+        first_asks.size(),
+        second_asks.size()
+    );
+
+    for (
+        std::size_t index = 0;
+        index < first_asks.size();
+        ++index
+    ) {
+        EXPECT_EQ(
+            first_asks[index].price_ticks,
+            second_asks[index].price_ticks
+        );
+
+        EXPECT_EQ(
+            first_asks[index].quantity,
+            second_asks[index].quantity
         );
     }
 
@@ -871,4 +736,172 @@ TEST(
             second_trades[index].sell_order_id
         );
     }
+}
+
+} // namespace
+
+TEST(
+    RandomizedMatchingTest,
+    MaintainsInvariantsAcrossTwoThousandOperations
+)
+{
+    run_randomized_sequence(
+        0xC0FFEEULL,
+        2'000
+    );
+}
+
+TEST(
+    RandomizedMatchingTest,
+    MaintainsInvariantsWithAlternateSeed
+)
+{
+    run_randomized_sequence(
+        0xBADC0DEULL,
+        2'000
+    );
+}
+
+TEST(
+    RandomizedMatchingTest,
+    MaintainsInvariantsWithThirdSeed
+)
+{
+    run_randomized_sequence(
+        0x123456789ULL,
+        2'000
+    );
+}
+
+TEST(
+    RandomizedMatchingTest,
+    SameSeedProducesIdenticalOperationSequence
+)
+{
+    constexpr std::uint64_t seed =
+        0xDEADBEEFULL;
+
+    constexpr std::size_t
+        operation_count = 1'000;
+
+    const std::vector<RandomOperation>
+        first_sequence =
+            generate_random_operation_sequence(
+                seed,
+                operation_count
+            );
+
+    const std::vector<RandomOperation>
+        second_sequence =
+            generate_random_operation_sequence(
+                seed,
+                operation_count
+            );
+
+    ASSERT_EQ(
+        first_sequence.size(),
+        second_sequence.size()
+    );
+
+    for (
+        std::size_t index = 0;
+        index < first_sequence.size();
+        ++index
+    ) {
+        EXPECT_TRUE(
+            first_sequence[index] ==
+            second_sequence[index]
+        );
+    }
+}
+
+TEST(
+    RandomizedMatchingTest,
+    DifferentSeedsProduceDifferentOperationSequences
+)
+{
+    const std::vector<RandomOperation>
+        first_sequence =
+            generate_random_operation_sequence(
+                0x111111ULL,
+                250
+            );
+
+    const std::vector<RandomOperation>
+        second_sequence =
+            generate_random_operation_sequence(
+                0x222222ULL,
+                250
+            );
+
+    ASSERT_EQ(
+        first_sequence.size(),
+        second_sequence.size()
+    );
+
+    EXPECT_FALSE(
+        first_sequence ==
+        second_sequence
+    );
+}
+
+TEST(
+    RandomizedMatchingTest,
+    SameOperationSequenceProducesSameFinalState
+)
+{
+    constexpr std::uint64_t seed =
+        0xABCDEF123ULL;
+
+    constexpr std::size_t
+        operation_count = 1'000;
+
+    const std::vector<RandomOperation>
+        operations =
+            generate_random_operation_sequence(
+                seed,
+                operation_count
+            );
+
+    OrderBook first_order_book;
+    MatchingEngine first_engine(
+        first_order_book
+    );
+
+    OrderBook second_order_book;
+    MatchingEngine second_engine(
+        second_order_book
+    );
+
+    for (
+        const RandomOperation& operation :
+        operations
+    ) {
+        execute_random_operation(
+            operation,
+            first_engine
+        );
+
+        execute_random_operation(
+            operation,
+            second_engine
+        );
+
+        assert_engine_invariants(
+            first_engine,
+            first_order_book
+        );
+
+        assert_engine_invariants(
+            second_engine,
+            second_order_book
+        );
+    }
+
+    expect_same_engine_state(
+        first_engine,
+        first_order_book,
+        second_engine,
+        second_order_book
+    );
 }
