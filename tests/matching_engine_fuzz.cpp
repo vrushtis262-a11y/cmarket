@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <limits>
@@ -58,23 +59,24 @@ public:
     }
 
     [[nodiscard]]
-    std::int64_t next_positive_i64(
-        std::int64_t maximum
-    ) noexcept
+    std::int64_t next_i64() noexcept
     {
-        if (maximum <= 0) {
-            return 1;
-        }
-
-        const std::uint64_t value =
+        const std::uint64_t raw =
             next_u64();
 
-        return static_cast<std::int64_t>(
-            value %
-            static_cast<std::uint64_t>(
-                maximum
-            )
-        ) + 1;
+        std::int64_t value = 0;
+
+        static_assert(
+            sizeof(value) == sizeof(raw)
+        );
+
+        std::memcpy(
+            &value,
+            &raw,
+            sizeof(value)
+        );
+
+        return value;
     }
 
 private:
@@ -219,86 +221,78 @@ void fuzz_one_input(
         order_book
     );
 
-    constexpr std::int64_t
-        maximum_price = 1'000'000;
-
-    constexpr std::int64_t
-        maximum_quantity = 10'000;
-
     while (!reader.empty()) {
         const std::uint8_t operation =
-            reader.next_byte() % 6;
+            reader.next_byte() % 4U;
+
+        const OrderSide side =
+            reader.next_byte() % 2U == 0U
+                ? OrderSide::Buy
+                : OrderSide::Sell;
+
+        const std::int64_t price_ticks =
+            reader.next_i64();
+
+        const std::int64_t quantity =
+            reader.next_i64();
+
+        const OrderId order_id =
+            static_cast<OrderId>(
+                reader.next_u64()
+            );
 
         try {
             switch (operation) {
             case 0:
-                static_cast<void>(
-                    engine.place_limit_buy(
-                        reader.next_positive_i64(
-                            maximum_price
-                        ),
-                        reader.next_positive_i64(
-                            maximum_quantity
+                if (side == OrderSide::Buy) {
+                    static_cast<void>(
+                        engine.place_limit_buy(
+                            price_ticks,
+                            quantity
                         )
-                    )
-                );
+                    );
+                }
+                else {
+                    static_cast<void>(
+                        engine.place_limit_sell(
+                            price_ticks,
+                            quantity
+                        )
+                    );
+                }
                 break;
 
             case 1:
-                static_cast<void>(
-                    engine.place_limit_sell(
-                        reader.next_positive_i64(
-                            maximum_price
-                        ),
-                        reader.next_positive_i64(
-                            maximum_quantity
+                if (side == OrderSide::Buy) {
+                    static_cast<void>(
+                        engine.execute_market_buy(
+                            quantity
                         )
-                    )
-                );
+                    );
+                }
+                else {
+                    static_cast<void>(
+                        engine.execute_market_sell(
+                            quantity
+                        )
+                    );
+                }
                 break;
 
             case 2:
                 static_cast<void>(
-                    engine.execute_market_buy(
-                        reader.next_positive_i64(
-                            maximum_quantity
-                        )
+                    engine.cancel_order(
+                        order_id
                     )
                 );
                 break;
 
             case 3:
                 static_cast<void>(
-                    engine.execute_market_sell(
-                        reader.next_positive_i64(
-                            maximum_quantity
-                        )
-                    )
-                );
-                break;
-
-            case 4:
-                static_cast<void>(
-                    engine.cancel_order(
-                        static_cast<OrderId>(
-                            reader.next_u64()
-                        )
-                    )
-                );
-                break;
-
-            case 5:
-                static_cast<void>(
                     engine.modify_order(
-                        static_cast<OrderId>(
-                            reader.next_u64()
-                        ),
-                        reader.next_positive_i64(
-                            maximum_price
-                        ),
-                        reader.next_positive_i64(
-                            maximum_quantity
-                        )
+                        order_id,
+                        price_ticks,
+                        quantity
                     )
                 );
                 break;

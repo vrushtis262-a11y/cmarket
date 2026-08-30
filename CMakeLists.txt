@@ -17,8 +17,15 @@ option(
     OFF
 )
 
+option(
+    CMARKET_ENABLE_LIBFUZZER
+    "Enable libFuzzer for the matching engine fuzz target when supported"
+    OFF
+)
+
 include(FetchContent)
 include(CTest)
+include(CheckCXXSourceCompiles)
 
 find_package(Boost CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -60,6 +67,90 @@ function(cmarket_enable_sanitizers target_name)
             "Sanitizers are only configured for Clang and GCC."
         )
     endif()
+endfunction()
+
+function(cmarket_enable_libfuzzer target_name)
+    if(NOT CMARKET_ENABLE_LIBFUZZER)
+        message(
+            STATUS
+            "libFuzzer disabled; ${target_name} will use standalone stdin mode."
+        )
+        return()
+    endif()
+
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(
+            WARNING
+            "libFuzzer requested, but the active compiler is not Clang. "
+            "${target_name} will use standalone stdin mode."
+        )
+        return()
+    endif()
+
+    set(
+        CMAKE_REQUIRED_FLAGS
+        "-fsanitize=fuzzer,address,undefined"
+    )
+
+    set(
+        CMAKE_REQUIRED_LINK_OPTIONS
+        "-fsanitize=fuzzer,address,undefined"
+    )
+
+    check_cxx_source_compiles(
+        "
+        #include <cstddef>
+        #include <cstdint>
+
+        extern \"C\" int LLVMFuzzerTestOneInput(
+            const std::uint8_t* data,
+            std::size_t size
+        )
+        {
+            return data != nullptr && size > 0
+                ? static_cast<int>(data[0] & 0U)
+                : 0;
+        }
+        "
+        CMARKET_LIBFUZZER_AVAILABLE
+    )
+
+    unset(CMAKE_REQUIRED_FLAGS)
+    unset(CMAKE_REQUIRED_LINK_OPTIONS)
+
+    if(NOT CMARKET_LIBFUZZER_AVAILABLE)
+        message(
+            WARNING
+            "libFuzzer was requested but its runtime is unavailable. "
+            "${target_name} will use standalone stdin mode instead."
+        )
+        return()
+    endif()
+
+    target_compile_definitions(
+        ${target_name}
+        PRIVATE
+        CMARKET_LIBFUZZER
+    )
+
+    target_compile_options(
+        ${target_name}
+        PRIVATE
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+    )
+
+    target_link_options(
+        ${target_name}
+        PRIVATE
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+    )
+
+    message(
+        STATUS
+        "libFuzzer enabled for ${target_name}."
+    )
 endfunction()
 
 add_library(
@@ -339,6 +430,7 @@ if(BUILD_TESTING)
 
     cmarket_enable_warnings(matching_engine_fuzz)
     cmarket_enable_sanitizers(matching_engine_fuzz)
+    cmarket_enable_libfuzzer(matching_engine_fuzz)
 
     add_executable(
         limit_order_tests
