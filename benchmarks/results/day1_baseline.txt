@@ -1,0 +1,85 @@
+cmarket Performance Engineering - Day 1 Baseline
+
+Build:
+Release
+
+Architecture:
+Apple Silicon ARM64
+
+10,000-order baseline (approximate repeated-run results):
+
+Limit buy placement:
+~20.6 us/op
+~48.5k ops/sec
+
+Limit sell placement:
+~20.4 us/op
+~48.9k ops/sec
+
+Order cancellation:
+~20.5 us/op
+~48.7k ops/sec
+
+Order modification:
+~49.2 us/op
+~20.3k ops/sec
+
+Market buy matching:
+~32.4 us/op
+~30.9k ops/sec
+
+
+100,000-order workload:
+
+Limit buy placement:
+198058.35 ns/op
+5049 ops/sec
+
+Limit sell placement:
+197541.64 ns/op
+5062 ops/sec
+
+Order cancellation:
+191274.16 ns/op
+5228 ops/sec
+
+Order modification:
+468559.94 ns/op
+2134 ops/sec
+
+Market buy matching:
+334099.88 ns/op
+2993 ops/sec
+
+
+Profiling findings:
+
+1. MatchingEngine::rebuild_order_book()
+   - Primary observed hotspot.
+   - Rebuilds the complete aggregated book after mutations.
+   - Scans all active orders.
+   - Constructs temporary std::map containers.
+   - Constructs temporary PriceLevel vectors.
+   - Causes allocation/free activity.
+
+2. Order lookup/storage
+   - OrderManager uses vector-based storage.
+   - Profiling showed significant work around order management.
+   - Inspect lookup/cancellation implementation before optimization.
+
+3. MatchingEngine::find_best_match()
+   - Scans active orders to locate the best price/time match.
+   - Similar scanning occurs during market-order execution.
+
+Additional candidate:
+- Exception-safety backups copy major engine state before mutations.
+
+Scaling observation:
+Increasing the workload from 10,000 to 100,000 orders caused
+limit-order placement latency to increase from roughly 20 us/op
+to roughly 198 us/op.
+
+Day 2 goal:
+Reduce allocations and eliminate unnecessary full-book scans/rebuilds
+while preserving matching correctness, price-time priority, and
+exception safety.

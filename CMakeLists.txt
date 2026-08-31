@@ -234,6 +234,19 @@ target_link_libraries(
 cmarket_enable_warnings(cmarket)
 cmarket_enable_sanitizers(cmarket)
 
+add_executable(
+    baseline_benchmark
+    benchmarks/baseline_benchmark.cpp
+)
+
+target_link_libraries(
+    baseline_benchmark
+    PRIVATE
+    cmarket_matching_engine
+)
+
+cmarket_enable_warnings(baseline_benchmark)
+
 if(BUILD_TESTING)
     FetchContent_Declare(
         googletest
