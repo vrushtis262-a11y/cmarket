@@ -1,0 +1,406 @@
+cmarket Latency Benchmark Results
+=================================
+
+Overview
+--------
+
+This benchmark measures the latency characteristics of core cmarket
+matching-engine operations as the active order book grows.
+
+The goal is to evaluate not only average performance, but also tail
+latency and scaling behavior under increasingly large in-memory order
+sets.
+
+Measured operations:
+
+- Limit order placement
+- Single-order matching
+- Order cancellation
+- Order modification
+- Multi-level matching
+
+Book sizes:
+
+- 100 active orders
+- 1,000 active orders
+- 10,000 active orders
+- 100,000 active orders
+
+Latency statistics:
+
+- p50 / median
+- p95
+- p99
+- worst observed latency
+
+
+Benchmark Methodology
+---------------------
+
+Build configuration:
+Release
+
+Platform:
+Apple Silicon ARM64
+
+Timing source:
+std::chrono::steady_clock
+
+Measured samples per operation:
+1,000
+
+Warmup iterations per operation:
+100
+
+Setup and replenishment work is performed outside the timed region
+where possible.
+
+For mutating operations, the benchmark maintains an approximately
+constant active-book size between measurements instead of rebuilding
+the entire matching engine for every sample.
+
+The multi-level benchmark constructs ten distinct executable price
+levels and submits a market order large enough to consume all ten.
+This ensures the workload measures true multi-level traversal rather
+than multiple fills at a single price level.
+
+
+Latency Results
+===============
+
+100 Active Orders
+-----------------
+
+Operation               p50         p95         p99         Worst
+----------------------------------------------------------------
+Place order             125 ns      167 ns      167 ns      208 ns
+Match order           1,833 ns    2,375 ns    3,250 ns    9,958 ns
+Cancel order            208 ns      250 ns      333 ns      458 ns
+Modify order            375 ns      417 ns      459 ns    2,000 ns
+Multi-level match    10,584 ns   21,250 ns   31,625 ns   87,166 ns
+
+
+1,000 Active Orders
+-------------------
+
+Operation               p50         p95         p99         Worst
+----------------------------------------------------------------
+Place order             500 ns      542 ns      625 ns    1,208 ns
+Match order           5,000 ns    5,625 ns    8,333 ns    9,708 ns
+Cancel order          2,292 ns    4,125 ns    4,250 ns   10,083 ns
+Modify order          3,375 ns    5,834 ns    5,875 ns    9,791 ns
+Multi-level match    35,333 ns   37,958 ns   38,875 ns   48,791 ns
+
+
+10,000 Active Orders
+--------------------
+
+Operation               p50         p95         p99         Worst
+----------------------------------------------------------------
+Place order           4,875 ns    5,000 ns    8,667 ns    9,917 ns
+Match order          28,958 ns   29,625 ns   31,708 ns   39,791 ns
+Cancel order         17,584 ns   19,209 ns   21,500 ns   69,958 ns
+Modify order         27,417 ns   28,667 ns   33,250 ns   40,167 ns
+Multi-level match   206,208 ns  222,750 ns  231,333 ns  317,791 ns
+
+
+100,000 Active Orders
+---------------------
+
+Operation               p50         p95         p99         Worst
+----------------------------------------------------------------
+Place order          47,625 ns   52,666 ns   58,625 ns  146,583 ns
+Match order         271,916 ns  276,459 ns  282,833 ns  316,250 ns
+Cancel order        166,625 ns  171,375 ns  177,667 ns  194,125 ns
+Modify order        260,791 ns  265,333 ns  275,958 ns  298,083 ns
+Multi-level match 1,980,875 ns 2,022,917 ns 2,177,459 ns 2,270,958 ns
+
+
+Scaling Analysis
+================
+
+Median latency from 100 to 100,000 active orders:
+
+Operation               100 orders       100K orders      Growth
+----------------------------------------------------------------
+Place order             125 ns           47,625 ns        ~381x
+Match order           1,833 ns          271,916 ns        ~148x
+Cancel order            208 ns          166,625 ns        ~801x
+Modify order            375 ns          260,791 ns        ~695x
+Multi-level match    10,584 ns        1,980,875 ns        ~187x
+
+
+Tail Latency at 100,000 Orders
+=============================
+
+Operation               p50             p99
+------------------------------------------------
+Place order             47.6 us          58.6 us
+Match order            271.9 us         282.8 us
+Cancel order           166.6 us         177.7 us
+Modify order           260.8 us         276.0 us
+Multi-level match        1.98 ms           2.18 ms
+
+
+Engineering Findings
+====================
+
+Order Placement
+---------------
+
+Order placement remains the lowest-latency operation at the largest
+tested book size, with a median latency of approximately 47.6 us at
+100,000 active orders.
+
+However, placement latency still increases substantially with book
+size.
+
+One contributor is duplicate OrderId validation in OrderManager,
+which currently searches the active-order vector before insertion.
+
+The results indicate that order placement is not constant-time with
+respect to active-order count.
+
+
+Single-Order Matching
+---------------------
+
+Median single-order matching latency grows from approximately 1.8 us
+at 100 active orders to approximately 271.9 us at 100,000 orders.
+
+The matching engine can determine whether an incoming limit order
+crosses the aggregate book using the best bid or ask, avoiding an
+unnecessary full scan for non-crossing orders.
+
+Once an order actually crosses, however, the engine still searches
+active orders to identify the best resting match.
+
+This active-order lookup becomes increasingly expensive as the book
+grows.
+
+
+Cancellation
+------------
+
+Cancellation exhibits the strongest relative scaling degradation in
+the benchmark.
+
+Median latency grows from:
+
+208 ns at 100 orders
+
+to:
+
+166.6 us at 100,000 orders.
+
+The active-order container is currently vector-based. Cancellation
+therefore involves locating the target order and erasing it from the
+vector, which may also require moving subsequent elements.
+
+The measured results make cancellation lookup and removal a clear
+candidate for future data-structure optimization.
+
+
+Modification
+------------
+
+Median modification latency grows from:
+
+375 ns at 100 orders
+
+to:
+
+260.8 us at 100,000 orders.
+
+Modification performs more work than a simple in-place field change.
+It must maintain matching semantics, order-book consistency, FIFO
+priority rules, and exception guarantees.
+
+The current implementation may perform order lookup, removal,
+aggregate-book adjustment, matching, reinsertion, and state
+preservation work during the operation.
+
+This combination becomes increasingly expensive as the active order
+set grows.
+
+
+Multi-Level Matching
+--------------------
+
+Multi-level matching has the highest absolute latency of the measured
+operations.
+
+At 100,000 active orders:
+
+p50:
+approximately 1.98 ms
+
+p99:
+approximately 2.18 ms
+
+worst observed:
+approximately 2.27 ms
+
+A multi-level execution repeatedly locates and consumes resting
+liquidity.
+
+Because locating the next matching order still depends on searching
+the active-order collection, that lookup cost is repeated across
+multiple fills.
+
+This makes the matching data structure one of the highest-impact
+areas for future performance work.
+
+
+Tail-Latency Behavior
+=====================
+
+At 100,000 active orders, p99 latency remains relatively close to p50
+for most operations.
+
+Examples:
+
+Place:
+47.6 us p50 -> 58.6 us p99
+
+Match:
+271.9 us p50 -> 282.8 us p99
+
+Cancel:
+166.6 us p50 -> 177.7 us p99
+
+Modify:
+260.8 us p50 -> 276.0 us p99
+
+Multi-level match:
+1.98 ms p50 -> 2.18 ms p99
+
+This suggests that much of the observed large-book latency comes from
+repeatable algorithmic work rather than rare latency spikes.
+
+Worst-case observations can still be influenced by operating-system
+scheduling, cache effects, and other system noise, so percentile
+measurements provide a more useful basis for comparing operations.
+
+
+Performance Engineering Conclusions
+===================================
+
+The benchmark identifies four primary sources of scaling cost in the
+current architecture:
+
+1. Linear active-order lookup
+
+   Several matching and order-management paths still search the
+   active-order vector.
+
+2. Vector erase and movement
+
+   Cancellation and operations that remove active orders may require
+   movement of subsequent vector elements.
+
+3. Repeated matching lookup
+
+   Multi-fill executions repeat the matching search for each resting
+   order consumed.
+
+4. State-management overhead
+
+   Modification and other operations maintain strong correctness and
+   exception-safety guarantees, which introduce additional work on
+   mutation paths.
+
+
+A hash-based active-order index was previously evaluated as a possible
+optimization.
+
+Although it improved asymptotic lookup behavior, the measured
+end-to-end performance improvement was small relative to the added
+state-management complexity, so it was not retained.
+
+This benchmark therefore serves as measurement-driven evidence for
+future architectural changes rather than assuming that a theoretically
+faster data structure automatically produces a meaningful system-level
+improvement.
+
+
+Correctness Validation
+======================
+
+The complete automated test suite was executed after adding the
+latency benchmark.
+
+Tests passed:
+158 / 158
+
+Pass rate:
+100%
+
+Total test time:
+1.23 seconds
+
+The benchmark is implemented as a separate executable and does not
+change matching-engine behavior.
+
+
+Benchmark Runtime
+=================
+
+Full benchmark runtime:
+
+User CPU time:
+16.35 seconds
+
+System CPU time:
+0.04 seconds
+
+Wall-clock time:
+16.752 seconds
+
+CPU utilization:
+97%
+
+
+Summary
+=======
+
+cmarket was benchmarked across active order books ranging from
+100 to 100,000 orders using latency distributions rather than only
+average throughput.
+
+At 100,000 active orders:
+
+- Limit placement p99:       58.6 us
+- Single-order match p99:   282.8 us
+- Cancellation p99:         177.7 us
+- Modification p99:         276.0 us
+- Ten-level match p99:        2.18 ms
+
+The results show that the engine performs efficiently on small books,
+while vector-based active-order management and repeated matching
+searches become increasingly important at larger scales.
+
+The strongest relative scaling degradation occurs in cancellation,
+while multi-level matching has the highest absolute latency.
+
+These measurements provide a concrete performance baseline for future
+work on indexed order lookup, cancellation efficiency, price-level
+organization, and multi-fill execution.
+
+
+Artifacts
+=========
+
+Benchmark implementation:
+
+benchmarks/latency_benchmark.cpp
+
+
+Raw benchmark output:
+
+benchmarks/results/latency_benchmark_raw.txt
+
+
+Analyzed benchmark report:
+
+benchmarks/results/latency_benchmark_results.txt

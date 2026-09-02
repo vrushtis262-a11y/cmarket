@@ -1,0 +1,29 @@
+
+cmarket Latency Benchmark
+================================================================================
+Measured iterations per operation: 1000
+Warmup iterations per operation: 100
+
+Operation                Book size        p50 (ns)        p95 (ns)        p99 (ns)      Worst (ns)
+----------------------------------------------------------------------------------------------
+Place order                    100             125             167             167             208
+Match order                    100            1833            2375            3250            9958
+Cancel order                   100             208             250             333             458
+Modify order                   100             375             417             459            2000
+Multi-level match              100           10584           21250           31625           87166
+Place order                   1000             500             542             625            1208
+Match order                   1000            5000            5625            8333            9708
+Cancel order                  1000            2292            4125            4250           10083
+Modify order                  1000            3375            5834            5875            9791
+Multi-level match             1000           35333           37958           38875           48791
+Place order                  10000            4875            5000            8667            9917
+Match order                  10000           28958           29625           31708           39791
+Cancel order                 10000           17584           19209           21500           69958
+Modify order                 10000           27417           28667           33250           40167
+Multi-level match            10000          206208          222750          231333          317791
+Place order                 100000           47625           52666           58625          146583
+Match order                 100000          271916          276459          282833          316250
+Cancel order                100000          166625          171375          177667          194125
+Modify order                100000          260791          265333          275958          298083
+Multi-level match           100000         1980875         2022917         2177459         2270958
+

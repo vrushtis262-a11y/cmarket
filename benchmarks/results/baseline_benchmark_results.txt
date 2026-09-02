@@ -1,0 +1,549 @@
+cmarket Performance Benchmark Results
+=====================================
+
+Overview
+--------
+
+This report documents the performance engineering work performed on
+the cmarket matching engine.
+
+The objective was to identify expensive execution paths using
+measurement and profiling, apply targeted optimizations, and verify
+that each change preserved matching-engine correctness.
+
+The benchmark exercises five core workloads:
+
+- Limit buy placement
+- Limit sell placement
+- Order cancellation
+- Order modification
+- Market buy matching
+
+Each workload executes:
+
+100,000 operations
+
+
+Performance Engineering Approach
+================================
+
+The optimization process followed a measurement-driven workflow:
+
+1. Establish a repeatable performance baseline.
+2. Profile the matching engine to identify dominant hotspots.
+3. Optimize one structural bottleneck at a time.
+4. Re-run the benchmark after each change.
+5. Run the complete automated test suite.
+6. Reject changes whose measured benefit did not justify their
+   complexity.
+
+This approach was used to avoid speculative optimization and keep
+performance changes tied to measurable system-level improvements.
+
+
+Initial Baseline
+================
+
+The original 100,000-operation benchmark produced:
+
+Operation                    Latency        Throughput
+------------------------------------------------------
+Limit buy placement       198,058 ns/op      5,049 ops/s
+Limit sell placement      197,542 ns/op      5,062 ops/s
+Order cancellation        191,274 ns/op      5,228 ops/s
+Order modification        468,560 ns/op      2,134 ops/s
+Market buy matching       334,100 ns/op      2,993 ops/s
+
+Total benchmark runtime:
+
+approximately 197.45 seconds
+
+
+Initial Profiling Findings
+==========================
+
+Profiling identified several expensive paths in the matching engine.
+
+Primary hotspot:
+
+MatchingEngine::rebuild_order_book()
+
+Additional significant costs included:
+
+- repeated vector copying
+- memory movement
+- OrderManager::add_order()
+- MatchingEngine::find_best_match()
+- rebuilding aggregate order-book state after mutations
+
+The dominant architectural issue was that local order mutations could
+trigger reconstruction of aggregate bid and ask state from the active
+order collection.
+
+As the number of active orders increased, this repeated work became
+increasingly expensive.
+
+
+Optimization 1 - Move Rebuilt Order-Book State
+==============================================
+
+The first optimization removed unnecessary copying when replacing
+rebuilt bid and ask vectors.
+
+Instead of copying temporary rebuilt vectors into the OrderBook,
+ownership could be transferred using move semantics.
+
+Engineering impact:
+
+- reduced avoidable vector copies
+- reduced allocation/copy overhead during rebuilds
+- preserved existing behavior and ownership semantics
+
+This was a low-complexity optimization, but profiling showed that the
+larger architectural rebuild cost still dominated execution.
+
+
+Optimization 2 - Normalized Snapshot Path
+=========================================
+
+A dedicated normalized-snapshot path was introduced for internal
+order-book reconstruction.
+
+The general snapshot API supports normalization work such as sorting
+and aggregation because externally supplied snapshots cannot always
+be assumed to already satisfy internal invariants.
+
+Matching-engine-generated snapshots, however, are constructed from
+known internal state.
+
+Providing a path for already-normalized data avoids repeating work
+that the matching engine has already guaranteed.
+
+Engineering impact:
+
+- reduced redundant normalization
+- retained validation boundaries for general snapshot input
+- separated trusted internal reconstruction from general snapshot
+  ingestion
+
+
+Optimization 3 - Incremental Order-Book Maintenance
+===================================================
+
+The largest structural optimization removed full order-book
+reconstruction from common mutation paths.
+
+Instead of rebuilding the complete aggregate book after every local
+order change, the matching engine updates affected price levels
+incrementally.
+
+The OrderBook supports quantity adjustments that can:
+
+- increase an existing price level
+- decrease an existing price level
+- insert a new level in price order
+- remove a level when its quantity reaches zero
+- reject invalid underflow or overflow adjustments
+
+This changed the performance model from repeatedly reconstructing
+global book state toward updating only the affected aggregate level.
+
+This optimization removed the primary hotspot identified during
+initial profiling.
+
+
+Optimization 4 - Avoid Unnecessary State Backups
+================================================
+
+Non-crossing limit-order placement was separated from execution paths
+that require more expensive rollback protection.
+
+When an incoming limit order does not cross the opposite side of the
+book, the operation can follow a simpler path:
+
+- validate the order
+- assign identifiers and sequence information
+- store the active order
+- incrementally update aggregate book state
+
+This avoids taking large OrderManager and TradeStore state backups on
+the common non-crossing placement path.
+
+More complex paths continue to preserve the required exception-safety
+guarantees.
+
+
+Optimization 5 - Constant-Time Preliminary Crossing Check
+=========================================================
+
+The preliminary question:
+
+"Does this incoming limit order cross the current book?"
+
+does not require scanning every active order.
+
+The aggregate OrderBook already maintains the best bid and best ask.
+
+The matching engine therefore uses:
+
+best ask for incoming buys
+
+and:
+
+best bid for incoming sells
+
+to determine whether matching is required.
+
+This makes the preliminary crossing decision independent of the
+number of active local orders.
+
+Important distinction:
+
+This optimization eliminates the initial active-order scan for
+non-crossing placement.
+
+Actual execution still needs to locate the correct resting order, so
+MatchingEngine::find_best_match() remains an important scaling cost
+for crossing orders.
+
+
+Evaluated Optimization - Hash-Based Order Index
+===============================================
+
+A hash-based OrderId index was evaluated alongside the existing
+vector-based OrderManager.
+
+The goal was to improve operations that require locating an active
+order, particularly cancellation and modification.
+
+The experimental design combined:
+
+- vector storage for order ownership and iteration
+- unordered_map-based lookup by OrderId
+
+The implementation was benchmarked and tested before deciding whether
+to retain it.
+
+Measured end-to-end improvement was approximately:
+
+0.71%
+
+Although the structure improved theoretical lookup complexity, the
+system-level performance gain was too small relative to the additional
+complexity required to keep vector positions and hash entries
+synchronized.
+
+The experiment was therefore reverted.
+
+This was an intentional measurement-driven decision: an optimization
+was not retained simply because its asymptotic lookup complexity was
+better.
+
+Regression tests covering lookup correctness after cancellation and
+OrderId reuse were retained.
+
+
+Final Optimized Benchmark
+=========================
+
+After the accepted optimizations, the same 100,000-operation benchmark
+produced:
+
+Operation                    Latency        Throughput
+------------------------------------------------------
+Limit buy placement        24,254 ns/op     41,230 ops/s
+Limit sell placement       24,183 ns/op     41,351 ops/s
+Order cancellation         81,828 ns/op     12,221 ops/s
+Order modification        258,596 ns/op      3,867 ops/s
+Market buy matching       230,745 ns/op      4,334 ops/s
+
+Total benchmark runtime:
+
+approximately 69.43 seconds
+
+
+Performance Improvement
+=======================
+
+Baseline versus final optimized implementation:
+
+Operation                Baseline        Optimized       Latency Reduction
+---------------------------------------------------------------------------
+Limit buy placement     198,058 ns       24,254 ns          ~87.8%
+Limit sell placement    197,542 ns       24,183 ns          ~87.8%
+Order cancellation      191,274 ns       81,828 ns          ~57.2%
+Order modification      468,560 ns      258,596 ns          ~44.8%
+Market buy matching     334,100 ns      230,745 ns          ~30.9%
+
+
+Approximate throughput improvement:
+
+Limit buy placement:
+
+5,049 ops/s -> 41,230 ops/s
+
+approximately 8.17x
+
+
+Limit sell placement:
+
+5,062 ops/s -> 41,351 ops/s
+
+approximately 8.17x
+
+
+Order cancellation:
+
+5,228 ops/s -> 12,221 ops/s
+
+approximately 2.34x
+
+
+Order modification:
+
+2,134 ops/s -> 3,867 ops/s
+
+approximately 1.81x
+
+
+Market buy matching:
+
+2,993 ops/s -> 4,334 ops/s
+
+approximately 1.45x
+
+
+Overall Benchmark Runtime
+=========================
+
+Original benchmark runtime:
+
+approximately 197.45 seconds
+
+Final optimized runtime:
+
+approximately 69.43 seconds
+
+Runtime reduction:
+
+approximately 64.8%
+
+Overall speedup:
+
+approximately 2.84x
+
+
+Engineering Findings
+====================
+
+1. Aggregate Book Reconstruction Was the Dominant Bottleneck
+------------------------------------------------------------
+
+The largest performance improvement came from changing the
+architecture rather than applying isolated micro-optimizations.
+
+Repeatedly rebuilding aggregate order-book state caused work to grow
+with the size of the active-order collection.
+
+Incremental price-level maintenance removed this repeated global
+reconstruction from common mutation paths.
+
+
+2. Fast Paths Matter for Common Operations
+------------------------------------------
+
+Non-crossing limit placement is a common and comparatively simple
+operation.
+
+Avoiding unnecessary state backups and using the aggregate best
+bid/ask for the crossing decision substantially reduced placement
+latency.
+
+Limit placement improved by approximately 87.8% relative to the
+initial baseline.
+
+
+3. Better Big-O Does Not Guarantee Better End-to-End Performance
+----------------------------------------------------------------
+
+The experimental unordered_map index improved lookup complexity in
+isolation but produced only a small overall benchmark improvement.
+
+Maintaining the additional index also introduced:
+
+- extra state
+- synchronization requirements
+- more mutation complexity
+- additional invariants
+
+Because the measured system-level benefit was approximately 0.71%,
+the implementation was rejected.
+
+This result reinforced the importance of benchmarking complete
+workloads rather than selecting data structures based only on
+theoretical complexity.
+
+
+4. Matching Remains a Scaling Target
+------------------------------------
+
+The optimized preliminary crossing check avoids unnecessary scans for
+non-crossing orders.
+
+Actual matching still uses active-order search to identify the best
+resting order.
+
+As a result, matching performance still depends significantly on the
+number of active orders.
+
+Latency-distribution benchmarks provide additional measurements of
+this behavior at book sizes up to 100,000 active orders.
+
+
+5. Cancellation and Modification Remain Expensive
+-------------------------------------------------
+
+OrderManager currently stores active orders in a vector.
+
+Cancellation requires locating the order and erasing it, potentially
+moving subsequent elements.
+
+Modification performs additional work to maintain:
+
+- price-time priority
+- aggregate book consistency
+- matching semantics
+- identifier behavior
+- strong exception guarantees
+
+These operations therefore remain candidates for future architectural
+work.
+
+
+Correctness and Regression Protection
+=====================================
+
+Performance changes were validated against the complete automated test
+suite.
+
+Final test result:
+
+158 / 158 tests passed
+
+Pass rate:
+
+100%
+
+The test suite covers areas including:
+
+- order-book behavior
+- incremental updates
+- matching
+- market execution
+- limit-order execution
+- cancellation
+- modification
+- FIFO priority
+- trade persistence
+- exception safety
+- randomized matching invariants
+- OrderManager behavior
+- identifier generation
+
+Regression tests were also retained for OrderManager lookup behavior
+after:
+
+- cancelling the first order
+- cancelling a middle order
+- reusing a cancelled OrderId
+
+This allows future storage/indexing experiments to be evaluated
+without losing coverage of the behaviors exercised during performance
+engineering.
+
+
+Performance Summary
+===================
+
+The optimization work reduced total benchmark runtime from
+approximately:
+
+197.45 seconds
+
+to:
+
+69.43 seconds
+
+for an overall runtime reduction of approximately:
+
+64.8%
+
+and an overall speedup of approximately:
+
+2.84x
+
+
+The largest individual improvement occurred in limit-order placement:
+
+approximately 87.8% lower latency
+
+and:
+
+approximately 8.17x higher throughput
+
+
+The work also established several performance-engineering principles
+for the project:
+
+- profile before optimizing
+- remove structural bottlenecks before micro-optimizing
+- benchmark after each meaningful change
+- validate performance changes against correctness tests
+- retain optimizations only when measured benefit justifies complexity
+- use latency distributions and scaling tests to identify remaining
+  architectural limits
+
+
+Remaining Performance Opportunities
+===================================
+
+The benchmark and profiling results identify several areas for future
+investigation:
+
+- indexed active-order lookup
+- cancellation structures that avoid expensive vector erasure
+- price-level-aware order storage
+- direct access to FIFO queues at each price level
+- reducing repeated active-order scans during matching
+- reducing state-copying overhead while preserving exception safety
+
+Future changes should continue to be evaluated using measured
+end-to-end performance rather than theoretical complexity alone.
+
+
+Related Benchmark Artifacts
+===========================
+
+Throughput benchmark implementation:
+
+benchmarks/baseline_benchmark.cpp
+
+
+Performance benchmark report:
+
+benchmarks/results/baseline_benchmark_results.txt
+
+
+Latency-distribution benchmark:
+
+benchmarks/latency_benchmark.cpp
+
+
+Latency benchmark raw output:
+
+benchmarks/results/latency_benchmark_raw.txt
+
+
+Latency benchmark analysis:
+
+benchmarks/results/latency_benchmark_results.txt

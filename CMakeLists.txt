@@ -247,6 +247,19 @@ target_link_libraries(
 
 cmarket_enable_warnings(baseline_benchmark)
 
+add_executable(
+    latency_benchmark
+    benchmarks/latency_benchmark.cpp
+)
+
+target_link_libraries(
+    latency_benchmark
+    PRIVATE
+    cmarket_matching_engine
+)
+
+cmarket_enable_warnings(latency_benchmark)
+
 if(BUILD_TESTING)
     FetchContent_Declare(
         googletest
