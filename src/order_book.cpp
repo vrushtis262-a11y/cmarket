@@ -52,7 +52,8 @@ std::int64_t parse_fixed_nonnegative(
     ) {
         has_whole_digits = true;
 
-        const int digit = value[position] - '0';
+        const int digit =
+            value[position] - '0';
 
         if (
             whole_part >
@@ -66,7 +67,9 @@ std::int64_t parse_fixed_nonnegative(
             );
         }
 
-        whole_part = whole_part * 10 + digit;
+        whole_part =
+            whole_part * 10 + digit;
+
         ++position;
     }
 
@@ -82,7 +85,9 @@ std::int64_t parse_fixed_nonnegative(
         while (
             position < value.size() &&
             std::isdigit(
-                static_cast<unsigned char>(value[position])
+                static_cast<unsigned char>(
+                    value[position]
+                )
             )
         ) {
             if (fractional_digits >= 6) {
@@ -101,7 +106,10 @@ std::int64_t parse_fixed_nonnegative(
         }
     }
 
-    if (!has_whole_digits && fractional_digits == 0) {
+    if (
+        !has_whole_digits &&
+        fractional_digits == 0
+    ) {
         throw std::invalid_argument(
             "Invalid " + field_name + "."
         );
@@ -109,7 +117,8 @@ std::int64_t parse_fixed_nonnegative(
 
     if (position != value.size()) {
         throw std::invalid_argument(
-            field_name + " contains invalid characters."
+            field_name +
+            " contains invalid characters."
         );
     }
 
@@ -130,8 +139,10 @@ std::int64_t parse_fixed_nonnegative(
         );
     }
 
-    return whole_part * OrderBook::ticks_per_unit +
-           fractional_part;
+    return
+        whole_part *
+            OrderBook::ticks_per_unit +
+        fractional_part;
 }
 
 void validate_level(
@@ -142,13 +153,28 @@ void validate_level(
 {
     if (price_ticks < 0) {
         throw std::invalid_argument(
-            side_name + " price cannot be negative."
+            side_name +
+            " price cannot be negative."
         );
     }
 
     if (quantity < 0) {
         throw std::invalid_argument(
-            side_name + " quantity cannot be negative."
+            side_name +
+            " quantity cannot be negative."
+        );
+    }
+}
+
+void validate_adjustment_price(
+    std::int64_t price_ticks,
+    const std::string& side_name
+)
+{
+    if (price_ticks < 0) {
+        throw std::invalid_argument(
+            side_name +
+            " price cannot be negative."
         );
     }
 }
@@ -157,9 +183,16 @@ std::vector<PriceLevel> normalize_bids(
     const std::vector<PriceLevel>& levels
 )
 {
-    std::map<std::int64_t, std::int64_t, std::greater<>> aggregated;
+    std::map<
+        std::int64_t,
+        std::int64_t,
+        std::greater<>
+    > aggregated;
 
-    for (const PriceLevel& level : levels) {
+    for (
+        const PriceLevel& level :
+        levels
+    ) {
         validate_level(
             level.price_ticks,
             level.quantity,
@@ -175,7 +208,9 @@ std::vector<PriceLevel> normalize_bids(
 
         if (
             level.quantity >
-            std::numeric_limits<std::int64_t>::max() -
+            std::numeric_limits<
+                std::int64_t
+            >::max() -
                 quantity
         ) {
             throw std::overflow_error(
@@ -183,14 +218,30 @@ std::vector<PriceLevel> normalize_bids(
             );
         }
 
-        quantity += level.quantity;
+        quantity +=
+            level.quantity;
     }
 
     std::vector<PriceLevel> normalized;
-    normalized.reserve(aggregated.size());
 
-    for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back({price_ticks, quantity});
+    normalized.reserve(
+        aggregated.size()
+    );
+
+    for (
+        const auto& [
+            price_ticks,
+            quantity
+        ] : aggregated
+    ) {
+        normalized.push_back(
+            PriceLevel{
+                .price_ticks =
+                    price_ticks,
+                .quantity =
+                    quantity
+            }
+        );
     }
 
     return normalized;
@@ -200,9 +251,15 @@ std::vector<PriceLevel> normalize_asks(
     const std::vector<PriceLevel>& levels
 )
 {
-    std::map<std::int64_t, std::int64_t> aggregated;
+    std::map<
+        std::int64_t,
+        std::int64_t
+    > aggregated;
 
-    for (const PriceLevel& level : levels) {
+    for (
+        const PriceLevel& level :
+        levels
+    ) {
         validate_level(
             level.price_ticks,
             level.quantity,
@@ -218,7 +275,9 @@ std::vector<PriceLevel> normalize_asks(
 
         if (
             level.quantity >
-            std::numeric_limits<std::int64_t>::max() -
+            std::numeric_limits<
+                std::int64_t
+            >::max() -
                 quantity
         ) {
             throw std::overflow_error(
@@ -226,14 +285,30 @@ std::vector<PriceLevel> normalize_asks(
             );
         }
 
-        quantity += level.quantity;
+        quantity +=
+            level.quantity;
     }
 
     std::vector<PriceLevel> normalized;
-    normalized.reserve(aggregated.size());
 
-    for (const auto& [price_ticks, quantity] : aggregated) {
-        normalized.push_back({price_ticks, quantity});
+    normalized.reserve(
+        aggregated.size()
+    );
+
+    for (
+        const auto& [
+            price_ticks,
+            quantity
+        ] : aggregated
+    ) {
+        normalized.push_back(
+            PriceLevel{
+                .price_ticks =
+                    price_ticks,
+                .quantity =
+                    quantity
+            }
+        );
     }
 
     return normalized;
@@ -245,29 +320,39 @@ void update_bid_levels(
     std::int64_t quantity
 )
 {
-    validate_level(price_ticks, quantity, "Bid");
-
-    const auto iterator = std::lower_bound(
-        levels.begin(),
-        levels.end(),
+    validate_level(
         price_ticks,
-        [](
-            const PriceLevel& level,
-            std::int64_t target_price
-        ) {
-            return level.price_ticks > target_price;
-        }
+        quantity,
+        "Bid"
     );
+
+    const auto iterator =
+        std::lower_bound(
+            levels.begin(),
+            levels.end(),
+            price_ticks,
+            [](
+                const PriceLevel& level,
+                std::int64_t target_price
+            )
+            {
+                return
+                    level.price_ticks >
+                    target_price;
+            }
+        );
 
     if (
         iterator != levels.end() &&
-        iterator->price_ticks == price_ticks
+        iterator->price_ticks ==
+            price_ticks
     ) {
         if (quantity == 0) {
             levels.erase(iterator);
         }
         else {
-            iterator->quantity = quantity;
+            iterator->quantity =
+                quantity;
         }
 
         return;
@@ -276,7 +361,12 @@ void update_bid_levels(
     if (quantity != 0) {
         levels.insert(
             iterator,
-            PriceLevel{price_ticks, quantity}
+            PriceLevel{
+                .price_ticks =
+                    price_ticks,
+                .quantity =
+                    quantity
+            }
         );
     }
 }
@@ -287,29 +377,39 @@ void update_ask_levels(
     std::int64_t quantity
 )
 {
-    validate_level(price_ticks, quantity, "Ask");
-
-    const auto iterator = std::lower_bound(
-        levels.begin(),
-        levels.end(),
+    validate_level(
         price_ticks,
-        [](
-            const PriceLevel& level,
-            std::int64_t target_price
-        ) {
-            return level.price_ticks < target_price;
-        }
+        quantity,
+        "Ask"
     );
+
+    const auto iterator =
+        std::lower_bound(
+            levels.begin(),
+            levels.end(),
+            price_ticks,
+            [](
+                const PriceLevel& level,
+                std::int64_t target_price
+            )
+            {
+                return
+                    level.price_ticks <
+                    target_price;
+            }
+        );
 
     if (
         iterator != levels.end() &&
-        iterator->price_ticks == price_ticks
+        iterator->price_ticks ==
+            price_ticks
     ) {
         if (quantity == 0) {
             levels.erase(iterator);
         }
         else {
-            iterator->quantity = quantity;
+            iterator->quantity =
+                quantity;
         }
 
         return;
@@ -318,9 +418,126 @@ void update_ask_levels(
     if (quantity != 0) {
         levels.insert(
             iterator,
-            PriceLevel{price_ticks, quantity}
+            PriceLevel{
+                .price_ticks =
+                    price_ticks,
+                .quantity =
+                    quantity
+            }
         );
     }
+}
+
+template <typename Compare>
+void adjust_levels(
+    std::vector<PriceLevel>& levels,
+    std::int64_t price_ticks,
+    std::int64_t quantity_delta,
+    const std::string& side_name,
+    Compare compare
+)
+{
+    validate_adjustment_price(
+        price_ticks,
+        side_name
+    );
+
+    if (quantity_delta == 0) {
+        return;
+    }
+
+    const auto iterator =
+        std::lower_bound(
+            levels.begin(),
+            levels.end(),
+            price_ticks,
+            compare
+        );
+
+    const bool level_exists =
+        iterator != levels.end() &&
+        iterator->price_ticks ==
+            price_ticks;
+
+    if (!level_exists) {
+        if (quantity_delta < 0) {
+            throw std::invalid_argument(
+                side_name +
+                " quantity adjustment would make "
+                "quantity negative."
+            );
+        }
+
+        levels.insert(
+            iterator,
+            PriceLevel{
+                .price_ticks =
+                    price_ticks,
+                .quantity =
+                    quantity_delta
+            }
+        );
+
+        return;
+    }
+
+    if (quantity_delta > 0) {
+        if (
+            quantity_delta >
+            std::numeric_limits<
+                std::int64_t
+            >::max() -
+                iterator->quantity
+        ) {
+            throw std::overflow_error(
+                side_name +
+                " quantity adjustment overflow."
+            );
+        }
+
+        iterator->quantity +=
+            quantity_delta;
+
+        return;
+    }
+
+    if (
+        quantity_delta ==
+        std::numeric_limits<
+            std::int64_t
+        >::min()
+    ) {
+        throw std::invalid_argument(
+            side_name +
+            " quantity adjustment would make "
+            "quantity negative."
+        );
+    }
+
+    const std::int64_t quantity_to_remove =
+        -quantity_delta;
+
+    if (
+        quantity_to_remove >
+        iterator->quantity
+    ) {
+        throw std::invalid_argument(
+            side_name +
+            " quantity adjustment would make "
+            "quantity negative."
+        );
+    }
+
+    if (
+        quantity_to_remove ==
+        iterator->quantity
+    ) {
+        levels.erase(iterator);
+        return;
+    }
+
+    iterator->quantity -=
+        quantity_to_remove;
 }
 
 std::int64_t calculate_depth(
@@ -329,10 +546,15 @@ std::int64_t calculate_depth(
 {
     std::int64_t depth = 0;
 
-    for (const PriceLevel& level : levels) {
+    for (
+        const PriceLevel& level :
+        levels
+    ) {
         if (
             level.quantity >
-            std::numeric_limits<std::int64_t>::max() -
+            std::numeric_limits<
+                std::int64_t
+            >::max() -
                 depth
         ) {
             throw std::overflow_error(
@@ -340,13 +562,15 @@ std::int64_t calculate_depth(
             );
         }
 
-        depth += level.quantity;
+        depth +=
+            level.quantity;
     }
 
     return depth;
 }
 
-std::optional<std::int64_t> calculate_vwap_ticks(
+std::optional<std::int64_t>
+calculate_vwap_ticks(
     const std::vector<PriceLevel>& levels
 ) noexcept
 {
@@ -354,16 +578,28 @@ std::optional<std::int64_t> calculate_vwap_ticks(
         return std::nullopt;
     }
 
-    long double weighted_price_total = 0.0L;
-    long double quantity_total = 0.0L;
+    long double weighted_price_total =
+        0.0L;
 
-    for (const PriceLevel& level : levels) {
+    long double quantity_total =
+        0.0L;
+
+    for (
+        const PriceLevel& level :
+        levels
+    ) {
         weighted_price_total +=
-            static_cast<long double>(level.price_ticks) *
-            static_cast<long double>(level.quantity);
+            static_cast<long double>(
+                level.price_ticks
+            ) *
+            static_cast<long double>(
+                level.quantity
+            );
 
         quantity_total +=
-            static_cast<long double>(level.quantity);
+            static_cast<long double>(
+                level.quantity
+            );
     }
 
     if (quantity_total == 0.0L) {
@@ -371,18 +607,24 @@ std::optional<std::int64_t> calculate_vwap_ticks(
     }
 
     const long double vwap =
-        weighted_price_total / quantity_total;
+        weighted_price_total /
+        quantity_total;
 
     if (
         vwap >
         static_cast<long double>(
-            std::numeric_limits<std::int64_t>::max()
+            std::numeric_limits<
+                std::int64_t
+            >::max()
         )
     ) {
         return std::nullopt;
     }
 
-    return static_cast<std::int64_t>(vwap);
+    return
+        static_cast<std::int64_t>(
+            vwap
+        );
 }
 
 } // namespace
@@ -392,14 +634,35 @@ void OrderBook::replace_snapshot(
     std::vector<PriceLevel> asks
 )
 {
-    std::vector<PriceLevel> normalized_bids =
-        normalize_bids(bids);
+    std::vector<PriceLevel>
+        normalized_bids =
+            normalize_bids(bids);
 
-    std::vector<PriceLevel> normalized_asks =
-        normalize_asks(asks);
+    std::vector<PriceLevel>
+        normalized_asks =
+            normalize_asks(asks);
 
-    bids_ = std::move(normalized_bids);
-    asks_ = std::move(normalized_asks);
+    bids_ =
+        std::move(
+            normalized_bids
+        );
+
+    asks_ =
+        std::move(
+            normalized_asks
+        );
+}
+
+void OrderBook::replace_normalized_snapshot(
+    std::vector<PriceLevel> bids,
+    std::vector<PriceLevel> asks
+)
+{
+    bids_ =
+        std::move(bids);
+
+    asks_ =
+        std::move(asks);
 }
 
 void OrderBook::update_bid(
@@ -423,6 +686,50 @@ void OrderBook::update_ask(
         asks_,
         price_ticks,
         quantity
+    );
+}
+
+void OrderBook::adjust_bid(
+    std::int64_t price_ticks,
+    std::int64_t quantity_delta
+)
+{
+    adjust_levels(
+        bids_,
+        price_ticks,
+        quantity_delta,
+        "Bid",
+        [](
+            const PriceLevel& level,
+            std::int64_t target_price
+        )
+        {
+            return
+                level.price_ticks >
+                target_price;
+        }
+    );
+}
+
+void OrderBook::adjust_ask(
+    std::int64_t price_ticks,
+    std::int64_t quantity_delta
+)
+{
+    adjust_levels(
+        asks_,
+        price_ticks,
+        quantity_delta,
+        "Ask",
+        [](
+            const PriceLevel& level,
+            std::int64_t target_price
+        )
+        {
+            return
+                level.price_ticks <
+                target_price;
+        }
     );
 }
 
@@ -461,18 +768,25 @@ OrderBook::best_ask() const noexcept
 std::optional<std::int64_t>
 OrderBook::spread_ticks() const noexcept
 {
-    if (bids_.empty() || asks_.empty()) {
+    if (
+        bids_.empty() ||
+        asks_.empty()
+    ) {
         return std::nullopt;
     }
 
-    return asks_.front().price_ticks -
-           bids_.front().price_ticks;
+    return
+        asks_.front().price_ticks -
+        bids_.front().price_ticks;
 }
 
 std::optional<std::int64_t>
 OrderBook::mid_price_ticks() const noexcept
 {
-    if (bids_.empty() || asks_.empty()) {
+    if (
+        bids_.empty() ||
+        asks_.empty()
+    ) {
         return std::nullopt;
     }
 
@@ -482,17 +796,25 @@ OrderBook::mid_price_ticks() const noexcept
     const std::int64_t ask =
         asks_.front().price_ticks;
 
-    return bid + ((ask - bid) / 2);
+    return
+        bid +
+        ((ask - bid) / 2);
 }
 
 std::int64_t
 OrderBook::bid_depth() const noexcept
 {
     try {
-        return calculate_depth(bids_);
+        return
+            calculate_depth(
+                bids_
+            );
     }
     catch (...) {
-        return std::numeric_limits<std::int64_t>::max();
+        return
+            std::numeric_limits<
+                std::int64_t
+            >::max();
     }
 }
 
@@ -500,124 +822,192 @@ std::int64_t
 OrderBook::ask_depth() const noexcept
 {
     try {
-        return calculate_depth(asks_);
+        return
+            calculate_depth(
+                asks_
+            );
     }
     catch (...) {
-        return std::numeric_limits<std::int64_t>::max();
+        return
+            std::numeric_limits<
+                std::int64_t
+            >::max();
     }
 }
 
 std::int64_t
 OrderBook::total_depth() const noexcept
 {
-    const std::int64_t bid_total = bid_depth();
-    const std::int64_t ask_total = ask_depth();
+    const std::int64_t bid_total =
+        bid_depth();
+
+    const std::int64_t ask_total =
+        ask_depth();
 
     if (
         ask_total >
-        std::numeric_limits<std::int64_t>::max() -
+        std::numeric_limits<
+            std::int64_t
+        >::max() -
             bid_total
     ) {
-        return std::numeric_limits<std::int64_t>::max();
+        return
+            std::numeric_limits<
+                std::int64_t
+            >::max();
     }
 
-    return bid_total + ask_total;
+    return
+        bid_total +
+        ask_total;
 }
 
 std::optional<double>
 OrderBook::order_book_imbalance() const noexcept
 {
     const double bid_total =
-        static_cast<double>(bid_depth());
+        static_cast<double>(
+            bid_depth()
+        );
 
     const double ask_total =
-        static_cast<double>(ask_depth());
+        static_cast<double>(
+            ask_depth()
+        );
 
     const double combined_depth =
-        bid_total + ask_total;
+        bid_total +
+        ask_total;
 
     if (combined_depth == 0.0) {
         return std::nullopt;
     }
 
-    return (bid_total - ask_total) /
-           combined_depth;
+    return
+        (
+            bid_total -
+            ask_total
+        ) /
+        combined_depth;
 }
 
 std::optional<std::int64_t>
 OrderBook::bid_vwap_ticks() const noexcept
 {
-    return calculate_vwap_ticks(bids_);
+    return
+        calculate_vwap_ticks(
+            bids_
+        );
 }
 
 std::optional<std::int64_t>
 OrderBook::ask_vwap_ticks() const noexcept
 {
-    return calculate_vwap_ticks(asks_);
+    return
+        calculate_vwap_ticks(
+            asks_
+        );
 }
 
 std::optional<std::int64_t>
 OrderBook::microprice_ticks() const noexcept
 {
-    if (bids_.empty() || asks_.empty()) {
+    if (
+        bids_.empty() ||
+        asks_.empty()
+    ) {
         return std::nullopt;
     }
 
-    const PriceLevel& bid = bids_.front();
-    const PriceLevel& ask = asks_.front();
+    const PriceLevel& bid =
+        bids_.front();
+
+    const PriceLevel& ask =
+        asks_.front();
 
     const long double combined_quantity =
-        static_cast<long double>(bid.quantity) +
-        static_cast<long double>(ask.quantity);
+        static_cast<long double>(
+            bid.quantity
+        ) +
+        static_cast<long double>(
+            ask.quantity
+        );
 
-    if (combined_quantity == 0.0L) {
+    if (
+        combined_quantity ==
+        0.0L
+    ) {
         return std::nullopt;
     }
 
     const long double weighted_price =
-        static_cast<long double>(bid.price_ticks) *
-            static_cast<long double>(ask.quantity) +
-        static_cast<long double>(ask.price_ticks) *
-            static_cast<long double>(bid.quantity);
+        static_cast<long double>(
+            bid.price_ticks
+        ) *
+            static_cast<long double>(
+                ask.quantity
+            ) +
+        static_cast<long double>(
+            ask.price_ticks
+        ) *
+            static_cast<long double>(
+                bid.quantity
+            );
 
     const long double microprice =
-        weighted_price / combined_quantity;
+        weighted_price /
+        combined_quantity;
 
     if (
         microprice >
         static_cast<long double>(
-            std::numeric_limits<std::int64_t>::max()
+            std::numeric_limits<
+                std::int64_t
+            >::max()
         )
     ) {
         return std::nullopt;
     }
 
-    return static_cast<std::int64_t>(microprice);
+    return
+        static_cast<std::int64_t>(
+            microprice
+        );
 }
 
 bool OrderBook::empty() const noexcept
 {
-    return bids_.empty() && asks_.empty();
+    return
+        bids_.empty() &&
+        asks_.empty();
 }
 
-std::int64_t OrderBook::price_to_ticks(
+std::int64_t
+OrderBook::price_to_ticks(
     const std::string& price
 )
 {
-    return parse_fixed_nonnegative(price, "Price");
+    return
+        parse_fixed_nonnegative(
+            price,
+            "Price"
+        );
 }
 
-std::int64_t OrderBook::quantity_to_fixed(
+std::int64_t
+OrderBook::quantity_to_fixed(
     const std::string& quantity
 )
 {
-    return parse_fixed_nonnegative(
-        quantity,
-        "Quantity"
-    );
+    return
+        parse_fixed_nonnegative(
+            quantity,
+            "Quantity"
+        );
 }
 
-std::string OrderBook::format_price(
+std::string
+OrderBook::format_price(
     std::int64_t price_ticks,
     std::size_t decimal_places
 )
@@ -636,13 +1026,18 @@ std::string OrderBook::format_price(
     }
 
     const std::int64_t whole_part =
-        price_ticks / ticks_per_unit;
+        price_ticks /
+        ticks_per_unit;
 
     const std::int64_t fractional_part =
-        price_ticks % ticks_per_unit;
+        price_ticks %
+        ticks_per_unit;
 
     if (decimal_places == 0) {
-        return std::to_string(whole_part);
+        return
+            std::to_string(
+                whole_part
+            );
     }
 
     std::ostringstream output;
@@ -654,7 +1049,8 @@ std::string OrderBook::format_price(
         << std::setfill('0')
         << fractional_part;
 
-    std::string formatted = output.str();
+    std::string formatted =
+        output.str();
 
     formatted.resize(
         formatted.size() -

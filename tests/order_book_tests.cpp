@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -519,6 +520,341 @@ TEST(OrderBookTest, RejectsNegativeIncrementalUpdates)
 
     EXPECT_THROW(
         book.update_ask(1, -1),
+        std::invalid_argument
+    );
+}
+
+TEST(OrderBookTest, AdjustsExistingBidAndAskQuantities)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "10")
+        },
+        {
+            level("0.540", "20")
+        }
+    );
+
+    book.adjust_bid(
+        OrderBook::price_to_ticks("0.530"),
+        OrderBook::quantity_to_fixed("5")
+    );
+
+    book.adjust_ask(
+        OrderBook::price_to_ticks("0.540"),
+        OrderBook::quantity_to_fixed("7")
+    );
+
+    ASSERT_EQ(book.bids().size(), 1U);
+    ASSERT_EQ(book.asks().size(), 1U);
+
+    EXPECT_EQ(
+        book.bids()[0].quantity,
+        OrderBook::quantity_to_fixed("15")
+    );
+
+    EXPECT_EQ(
+        book.asks()[0].quantity,
+        OrderBook::quantity_to_fixed("27")
+    );
+}
+
+TEST(OrderBookTest, InsertsAdjustedBidAndAskInPriceOrder)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "10"),
+            level("0.510", "20")
+        },
+        {
+            level("0.540", "30"),
+            level("0.560", "40")
+        }
+    );
+
+    book.adjust_bid(
+        OrderBook::price_to_ticks("0.520"),
+        OrderBook::quantity_to_fixed("15")
+    );
+
+    book.adjust_ask(
+        OrderBook::price_to_ticks("0.550"),
+        OrderBook::quantity_to_fixed("25")
+    );
+
+    ASSERT_EQ(book.bids().size(), 3U);
+    ASSERT_EQ(book.asks().size(), 3U);
+
+    EXPECT_EQ(
+        book.bids()[0].price_ticks,
+        OrderBook::price_to_ticks("0.530")
+    );
+
+    EXPECT_EQ(
+        book.bids()[1].price_ticks,
+        OrderBook::price_to_ticks("0.520")
+    );
+
+    EXPECT_EQ(
+        book.bids()[2].price_ticks,
+        OrderBook::price_to_ticks("0.510")
+    );
+
+    EXPECT_EQ(
+        book.asks()[0].price_ticks,
+        OrderBook::price_to_ticks("0.540")
+    );
+
+    EXPECT_EQ(
+        book.asks()[1].price_ticks,
+        OrderBook::price_to_ticks("0.550")
+    );
+
+    EXPECT_EQ(
+        book.asks()[2].price_ticks,
+        OrderBook::price_to_ticks("0.560")
+    );
+}
+
+TEST(OrderBookTest, SubtractsAdjustedBidAndAskQuantities)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "20")
+        },
+        {
+            level("0.540", "30")
+        }
+    );
+
+    book.adjust_bid(
+        OrderBook::price_to_ticks("0.530"),
+        -OrderBook::quantity_to_fixed("5")
+    );
+
+    book.adjust_ask(
+        OrderBook::price_to_ticks("0.540"),
+        -OrderBook::quantity_to_fixed("7")
+    );
+
+    ASSERT_EQ(book.bids().size(), 1U);
+    ASSERT_EQ(book.asks().size(), 1U);
+
+    EXPECT_EQ(
+        book.bids()[0].quantity,
+        OrderBook::quantity_to_fixed("15")
+    );
+
+    EXPECT_EQ(
+        book.asks()[0].quantity,
+        OrderBook::quantity_to_fixed("23")
+    );
+}
+
+TEST(OrderBookTest, RemovesAdjustedLevelsWhenQuantityReachesZero)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "10"),
+            level("0.520", "20")
+        },
+        {
+            level("0.540", "30"),
+            level("0.550", "40")
+        }
+    );
+
+    book.adjust_bid(
+        OrderBook::price_to_ticks("0.530"),
+        -OrderBook::quantity_to_fixed("10")
+    );
+
+    book.adjust_ask(
+        OrderBook::price_to_ticks("0.540"),
+        -OrderBook::quantity_to_fixed("30")
+    );
+
+    ASSERT_EQ(book.bids().size(), 1U);
+    ASSERT_EQ(book.asks().size(), 1U);
+
+    EXPECT_EQ(
+        book.best_bid()->price_ticks,
+        OrderBook::price_to_ticks("0.520")
+    );
+
+    EXPECT_EQ(
+        book.best_ask()->price_ticks,
+        OrderBook::price_to_ticks("0.550")
+    );
+}
+
+TEST(OrderBookTest, IgnoresZeroQuantityAdjustments)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "10")
+        },
+        {
+            level("0.540", "20")
+        }
+    );
+
+    book.adjust_bid(
+        OrderBook::price_to_ticks("0.530"),
+        0
+    );
+
+    book.adjust_ask(
+        OrderBook::price_to_ticks("0.540"),
+        0
+    );
+
+    ASSERT_EQ(book.bids().size(), 1U);
+    ASSERT_EQ(book.asks().size(), 1U);
+
+    EXPECT_EQ(
+        book.bids()[0].quantity,
+        OrderBook::quantity_to_fixed("10")
+    );
+
+    EXPECT_EQ(
+        book.asks()[0].quantity,
+        OrderBook::quantity_to_fixed("20")
+    );
+}
+
+TEST(OrderBookTest, RejectsAdjustmentBelowZero)
+{
+    OrderBook book;
+
+    book.replace_snapshot(
+        {
+            level("0.530", "10")
+        },
+        {
+            level("0.540", "20")
+        }
+    );
+
+    EXPECT_THROW(
+        book.adjust_bid(
+            OrderBook::price_to_ticks("0.530"),
+            -OrderBook::quantity_to_fixed("11")
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        book.adjust_ask(
+            OrderBook::price_to_ticks("0.540"),
+            -OrderBook::quantity_to_fixed("21")
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        book.adjust_bid(
+            OrderBook::price_to_ticks("0.520"),
+            -1
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        book.adjust_ask(
+            OrderBook::price_to_ticks("0.550"),
+            -1
+        ),
+        std::invalid_argument
+    );
+}
+
+TEST(OrderBookTest, RejectsAdjustmentOverflow)
+{
+    OrderBook book;
+
+    const std::int64_t maximum_quantity =
+        std::numeric_limits<std::int64_t>::max();
+
+    book.update_bid(
+        OrderBook::price_to_ticks("0.530"),
+        maximum_quantity
+    );
+
+    book.update_ask(
+        OrderBook::price_to_ticks("0.540"),
+        maximum_quantity
+    );
+
+    EXPECT_THROW(
+        book.adjust_bid(
+            OrderBook::price_to_ticks("0.530"),
+            1
+        ),
+        std::overflow_error
+    );
+
+    EXPECT_THROW(
+        book.adjust_ask(
+            OrderBook::price_to_ticks("0.540"),
+            1
+        ),
+        std::overflow_error
+    );
+}
+
+TEST(OrderBookTest, RejectsMinimumIntegerAdjustment)
+{
+    OrderBook book;
+
+    book.update_bid(
+        OrderBook::price_to_ticks("0.530"),
+        10
+    );
+
+    book.update_ask(
+        OrderBook::price_to_ticks("0.540"),
+        10
+    );
+
+    EXPECT_THROW(
+        book.adjust_bid(
+            OrderBook::price_to_ticks("0.530"),
+            std::numeric_limits<std::int64_t>::min()
+        ),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        book.adjust_ask(
+            OrderBook::price_to_ticks("0.540"),
+            std::numeric_limits<std::int64_t>::min()
+        ),
+        std::invalid_argument
+    );
+}
+
+TEST(OrderBookTest, RejectsNegativePricesForAdjustments)
+{
+    OrderBook book;
+
+    EXPECT_THROW(
+        book.adjust_bid(-1, 1),
+        std::invalid_argument
+    );
+
+    EXPECT_THROW(
+        book.adjust_ask(-1, 1),
         std::invalid_argument
     );
 }

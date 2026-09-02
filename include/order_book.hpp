@@ -21,6 +21,11 @@ public:
         std::vector<PriceLevel> asks
     );
 
+    void replace_normalized_snapshot(
+        std::vector<PriceLevel> bids,
+        std::vector<PriceLevel> asks
+    );
+
     void update_bid(
         std::int64_t price_ticks,
         std::int64_t quantity
@@ -29,6 +34,16 @@ public:
     void update_ask(
         std::int64_t price_ticks,
         std::int64_t quantity
+    );
+
+    void adjust_bid(
+        std::int64_t price_ticks,
+        std::int64_t quantity_delta
+    );
+
+    void adjust_ask(
+        std::int64_t price_ticks,
+        std::int64_t quantity_delta
     );
 
     [[nodiscard]]

@@ -503,6 +503,57 @@ TEST(MatchingEngineTest, PlacesLimitSellOrder)
     EXPECT_EQ(orders[0].sequence_number, 1U);
 }
 
+TEST(MatchingEngineTest, FirstLocalLimitOrderReplacesExistingSnapshot)
+{
+    OrderBook order_book;
+
+    order_book.replace_snapshot(
+        {
+            PriceLevel{
+                .price_ticks = 500'000,
+                .quantity = 200
+            }
+        },
+        {
+            PriceLevel{
+                .price_ticks = 600'000,
+                .quantity = 300
+            }
+        }
+    );
+
+    MatchingEngine engine(order_book);
+
+    const OrderId order_id =
+        engine.place_limit_buy(
+            520'000,
+            100
+        );
+
+    ASSERT_EQ(
+        engine.active_limit_orders().size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        engine.active_limit_orders()[0].order_id,
+        order_id
+    );
+
+    ASSERT_EQ(order_book.bids().size(), 1U);
+    EXPECT_TRUE(order_book.asks().empty());
+
+    EXPECT_EQ(
+        order_book.bids()[0].price_ticks,
+        520'000
+    );
+
+    EXPECT_EQ(
+        order_book.bids()[0].quantity,
+        100
+    );
+}
+
 TEST(MatchingEngineTest, AssignsSequentialOrderIds)
 {
     OrderBook order_book;

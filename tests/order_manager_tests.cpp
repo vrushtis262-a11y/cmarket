@@ -545,3 +545,177 @@ TEST(OrderManagerTest, RejectedOrderDoesNotMutateExistingState)
         );
     }
 }
+
+TEST(OrderManagerTest, LookupRemainsCorrectAfterCancellingFirstOrder)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Buy,
+            519'000,
+            90,
+            2
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Sell,
+            530'000,
+            80,
+            3
+        )
+    );
+
+    ASSERT_TRUE(
+        manager.cancel_order(1)
+    );
+
+    EXPECT_EQ(
+        manager.find_order(1),
+        nullptr
+    );
+
+    const LimitOrder* second =
+        manager.find_order(2);
+
+    const LimitOrder* third =
+        manager.find_order(3);
+
+    ASSERT_NE(second, nullptr);
+    ASSERT_NE(third, nullptr);
+
+    EXPECT_EQ(second->order_id, 2U);
+    EXPECT_EQ(second->price_ticks, 519'000);
+
+    EXPECT_EQ(third->order_id, 3U);
+    EXPECT_EQ(third->price_ticks, 530'000);
+
+    const auto& orders =
+        manager.orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+    EXPECT_EQ(orders[0].order_id, 2U);
+    EXPECT_EQ(orders[1].order_id, 3U);
+}
+
+TEST(OrderManagerTest, LookupRemainsCorrectAfterCancellingMiddleOrder)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Buy,
+            519'000,
+            90,
+            2
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Sell,
+            530'000,
+            80,
+            3
+        )
+    );
+
+    ASSERT_TRUE(
+        manager.cancel_order(2)
+    );
+
+    const LimitOrder* first =
+        manager.find_order(1);
+
+    const LimitOrder* third =
+        manager.find_order(3);
+
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(third, nullptr);
+
+    EXPECT_EQ(
+        manager.find_order(2),
+        nullptr
+    );
+
+    EXPECT_EQ(first->order_id, 1U);
+    EXPECT_EQ(third->order_id, 3U);
+
+    const auto& orders =
+        manager.orders();
+
+    ASSERT_EQ(orders.size(), 2U);
+    EXPECT_EQ(orders[0].order_id, 1U);
+    EXPECT_EQ(orders[1].order_id, 3U);
+}
+
+TEST(OrderManagerTest, CanReuseCancelledOrderId)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    ASSERT_TRUE(
+        manager.cancel_order(1)
+    );
+
+    EXPECT_EQ(
+        manager.find_order(1),
+        nullptr
+    );
+
+    EXPECT_NO_THROW(
+        manager.add_order(
+            make_order(
+                1,
+                OrderSide::Sell,
+                530'000,
+                50,
+                2
+            )
+        )
+    );
+
+    const LimitOrder* order =
+        manager.find_order(1);
+
+    ASSERT_NE(order, nullptr);
+
+    EXPECT_EQ(order->order_id, 1U);
+    EXPECT_EQ(order->side, OrderSide::Sell);
+    EXPECT_EQ(order->price_ticks, 530'000);
+}

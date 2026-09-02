@@ -72,6 +72,12 @@ private:
         std::int64_t quantity
     );
 
+    [[nodiscard]]
+    bool crosses_order_book(
+        OrderSide side,
+        std::int64_t price_ticks
+    ) const noexcept;
+
     void match_limit_order(
         LimitOrder& incoming_order
     );
@@ -91,7 +97,11 @@ private:
         OrderId resting_order_id
     );
 
-    void rebuild_order_book();
+    void adjust_order_book(
+        OrderSide side,
+        std::int64_t price_ticks,
+        std::int64_t quantity_delta
+    );
 
     OrderBook& order_book_;
     OrderIdGenerator order_id_generator_;
