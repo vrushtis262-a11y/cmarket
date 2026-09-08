@@ -1,0 +1,597 @@
+cmarket Throughput Benchmark Results
+====================================
+
+Overview
+--------
+
+This benchmark measures sustained matching-engine throughput across
+several representative workloads.
+
+The goal is to measure how many operations the engine can complete per
+second after the accepted performance optimizations.
+
+The benchmark includes:
+
+- pure limit-order placement
+- heavy matching
+- place/cancel activity
+- place/modify activity
+- a mixed steady-state workload
+
+
+Benchmark Configuration
+=======================
+
+Operations per workload:
+
+100,000
+
+Initial active orders for populated-book workloads:
+
+100,000
+
+Measured metric:
+
+Throughput = completed operations / elapsed time
+
+
+Throughput Results
+==================
+
+Workload                    Operations       Time          Throughput
+---------------------------------------------------------------------
+Order placement              100,000         2.436 s       41,046 ops/s
+Heavy matching               100,000        22.948 s        4,358 ops/s
+Place/cancel mix             100,000        10.677 s        9,366 ops/s
+Place/modify mix             100,000        20.127 s        4,968 ops/s
+Mixed workload               100,000        16.615 s        6,019 ops/s
+
+
+Workload Definitions
+====================
+
+Order Placement
+---------------
+
+Measures non-crossing limit-buy placement.
+
+The workload begins with an empty matching engine and places:
+
+100,000 limit-buy orders
+
+at a common non-crossing price.
+
+
+Heavy Matching
+--------------
+
+The engine is first populated with:
+
+100,000 resting buy orders
+
+The measured workload then submits:
+
+100,000 crossing limit-sell orders
+
+Each incoming sell order can execute against resting liquidity.
+
+
+Place/Cancel Mix
+----------------
+
+The engine begins with:
+
+100,000 active buy orders
+
+The measured workload alternates between:
+
+- placing a new limit-buy order
+- cancelling an active order near the middle of the order collection
+
+Each placement and cancellation counts as one operation.
+
+The total measured operation count is:
+
+100,000
+
+
+Place/Modify Mix
+----------------
+
+The engine begins with:
+
+100,000 active buy orders
+
+The measured workload alternates between:
+
+- placing a new limit-buy order
+- modifying an active order near the middle of the order collection
+
+Each placement and modification counts as one operation.
+
+The total measured operation count is:
+
+100,000
+
+
+Mixed Workload
+==============
+
+The mixed workload begins with:
+
+100,000 active buy orders
+
+Each 10-operation cycle performs:
+
+4 limit-order placements
+2 cancellations
+2 modifications
+2 crossing limit-order submissions
+
+This produces the following workload distribution:
+
+40% placement
+20% cancellation
+20% modification
+20% matching
+
+The total measured operation count is:
+
+100,000
+
+Measured throughput:
+
+6,019 operations per second
+
+
+Comparison with Existing Performance Benchmark
+==============================================
+
+The earlier optimized 100,000-operation benchmark measured:
+
+Limit buy placement:
+
+41,230 ops/s
+
+Limit sell placement:
+
+41,351 ops/s
+
+Market buy matching:
+
+4,334 ops/s
+
+
+The dedicated throughput benchmark measured:
+
+Order placement:
+
+41,046 ops/s
+
+Heavy matching:
+
+4,358 ops/s
+
+
+The close agreement between the independently executed benchmark
+workloads provides a useful reproducibility check.
+
+Placement differs by less than approximately:
+
+0.5%
+
+Matching differs by less than approximately:
+
+1%
+
+The measurements therefore show consistent throughput behavior across
+the performance benchmark suites.
+
+
+Latency and Throughput Together
+===============================
+
+The latency benchmark measured operation distributions at active book
+sizes from:
+
+100
+
+through:
+
+100,000 orders
+
+
+At a 100,000-order book size, measured p50 latency was:
+
+Place order:
+
+47.625 microseconds
+
+Match order:
+
+271.916 microseconds
+
+Cancel order:
+
+166.625 microseconds
+
+Modify order:
+
+260.791 microseconds
+
+Multi-level match:
+
+1.981 milliseconds
+
+
+At the same 100,000-order scale, measured p99 latency was:
+
+Place order:
+
+58.625 microseconds
+
+Match order:
+
+282.833 microseconds
+
+Cancel order:
+
+177.667 microseconds
+
+Modify order:
+
+275.958 microseconds
+
+Multi-level match:
+
+2.177 milliseconds
+
+
+The dedicated throughput benchmark measured:
+
+Order placement:
+
+41,046 ops/s
+
+Heavy matching:
+
+4,358 ops/s
+
+Place/cancel mix:
+
+9,366 ops/s
+
+Place/modify mix:
+
+4,968 ops/s
+
+Mixed workload:
+
+6,019 ops/s
+
+
+Profiling Findings
+==================
+
+A 20-second macOS sample was collected during a throughput benchmark
+execution.
+
+Because the complete benchmark takes substantially longer than the
+sampling interval, this profile represents a window of the benchmark
+rather than an equal sample of every workload.
+
+The sample identified significant execution time in:
+
+MatchingEngine::place_limit_order()
+
+and:
+
+OrderManager::cancel_order()
+
+
+A substantial portion of these paths was associated with:
+
+_platform_memmove
+
+
+This is consistent with the current active-order representation.
+
+OrderManager stores active orders in a contiguous vector.
+
+Operations that erase orders can therefore require movement of
+subsequent elements.
+
+The profile also showed memory-allocation activity during order
+placement, although vector movement was substantially more prominent
+in the sampled execution window.
+
+
+Remaining Performance Constraints
+=================================
+
+Order Placement
+---------------
+
+Non-crossing order placement is now the highest-throughput core
+operation measured by the benchmark.
+
+Throughput:
+
+41,046 ops/s
+
+Earlier architectural changes removed full aggregate order-book
+reconstruction from this common path.
+
+Remaining scaling cost is influenced by growth and management of the
+active-order collection.
+
+
+Matching
+--------
+
+Heavy matching achieved:
+
+4,358 ops/s
+
+The matching engine still searches active resting orders to identify
+the appropriate execution candidate.
+
+This remains an important scaling constraint at large active-order
+counts.
+
+
+Cancellation
+------------
+
+The place/cancel workload achieved:
+
+9,366 ops/s
+
+Profiling shows that cancellation remains strongly affected by vector
+erasure and memory movement.
+
+This agrees with the latency benchmark, where cancellation showed the
+largest relative latency growth as book size increased.
+
+
+Modification
+------------
+
+The place/modify workload achieved:
+
+4,968 ops/s
+
+Modification performs more work than direct cancellation because it
+must preserve matching-engine semantics while updating the order.
+
+Its cost includes maintaining:
+
+- price-time priority
+- aggregate order-book consistency
+- order state
+- exception-safety behavior
+
+
+Mixed Workload
+--------------
+
+The mixed workload achieved:
+
+6,019 ops/s
+
+This benchmark combines placement, cancellation, modification, and
+matching against an engine initialized with 100,000 active orders.
+
+It provides the most representative single throughput number in the
+current benchmark suite.
+
+
+Optimization Decision
+=====================
+
+The final profiling pass did not identify a small isolated hotspot
+whose removal would justify another localized optimization.
+
+The major remaining costs are tied to data-structure choices:
+
+- contiguous active-order storage
+- vector erasure and resulting memory movement
+- linear active-order search during matching
+- modification work required to preserve engine invariants
+
+Improving these areas would require a larger architectural change,
+such as introducing price-level-aware queues or an indexed active-order
+representation.
+
+A previous hash-based OrderId index was experimentally evaluated and
+rejected because its measured end-to-end improvement was only
+approximately:
+
+0.71%
+
+The remaining performance work should therefore be treated as future
+architecture design rather than additional micro-optimization.
+
+
+Correctness Verification
+========================
+
+The complete automated test suite was run after the accepted
+performance changes.
+
+Result:
+
+158 / 158 tests passed
+
+Pass rate:
+
+100%
+
+
+The tests include coverage for:
+
+- order-book operations
+- incremental order-book updates
+- matching
+- market execution
+- limit execution
+- cancellation
+- modification
+- FIFO behavior
+- trade persistence
+- exception safety
+- randomized matching invariants
+- OrderManager behavior
+- identifier generation
+
+
+Final Performance Summary
+=========================
+
+For the current implementation:
+
+100,000-order mixed workload throughput:
+
+6,019 ops/s
+
+
+Pure order-placement throughput:
+
+41,046 ops/s
+
+
+Heavy matching throughput:
+
+4,358 ops/s
+
+
+At a 100,000-order book size:
+
+Place-order p50 latency:
+
+47.625 microseconds
+
+Place-order p99 latency:
+
+58.625 microseconds
+
+
+Match-order p50 latency:
+
+271.916 microseconds
+
+Match-order p99 latency:
+
+282.833 microseconds
+
+
+Multi-level matching p50 latency:
+
+1.981 milliseconds
+
+Multi-level matching p99 latency:
+
+2.177 milliseconds
+
+
+Relative to the original performance baseline, the accepted
+optimizations reduced total benchmark runtime from approximately:
+
+197.45 seconds
+
+to:
+
+69.43 seconds
+
+
+Overall runtime reduction:
+
+approximately 64.8%
+
+
+Overall speedup:
+
+approximately 2.84x
+
+
+Limit-order placement improved by approximately:
+
+87.8% lower latency
+
+and approximately:
+
+8.17x higher throughput
+
+
+Engineering Conclusion
+======================
+
+cmarket now has a reproducible performance benchmark suite covering:
+
+- baseline throughput
+- optimized throughput
+- latency distributions
+- scaling from 100 to 100,000 active orders
+- mixed workloads
+- profiling evidence
+- regression testing
+
+The results provide measurable evidence of both the improvements
+already achieved and the architectural limits that remain.
+
+For a 100,000-order workload, the current engine processes
+approximately:
+
+6,019 mixed operations per second
+
+while pure non-crossing order placement reaches approximately:
+
+41,046 operations per second
+
+
+Related Artifacts
+=================
+
+Baseline benchmark:
+
+benchmarks/baseline_benchmark.cpp
+
+
+Latency benchmark:
+
+benchmarks/latency_benchmark.cpp
+
+
+Throughput benchmark:
+
+benchmarks/throughput_benchmark.cpp
+
+
+Performance optimization report:
+
+benchmarks/results/baseline_benchmark_results.txt
+
+
+Latency benchmark raw output:
+
+benchmarks/results/latency_benchmark_raw.txt
+
+
+Latency benchmark analysis:
+
+benchmarks/results/latency_benchmark_results.txt
+
+
+Throughput benchmark raw output:
+
+benchmarks/results/throughput_benchmark_raw.txt
+
+
+Throughput profiling sample:
+
+benchmarks/results/throughput_profile.txt
+
+
+Throughput benchmark analysis:
+
+benchmarks/results/throughput_benchmark_results.txt

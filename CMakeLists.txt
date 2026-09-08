@@ -260,6 +260,19 @@ target_link_libraries(
 
 cmarket_enable_warnings(latency_benchmark)
 
+add_executable(
+    throughput_benchmark
+    benchmarks/throughput_benchmark.cpp
+)
+
+target_link_libraries(
+    throughput_benchmark
+    PRIVATE
+    cmarket_matching_engine
+)
+
+cmarket_enable_warnings(throughput_benchmark)
+
 if(BUILD_TESTING)
     FetchContent_Declare(
         googletest

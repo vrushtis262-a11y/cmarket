@@ -1,0 +1,40 @@
+cmarket Performance Profiling Summary
+======================================
+
+Benchmark Environment
+---------------------
+Build: Release
+Workload size: 100,000 operations
+Initial active orders: 100,000
+
+Baseline Results
+----------------
+Order placement:   40,640 ops/sec
+Heavy matching:     3,839 ops/sec
+Place/cancel mix:   8,868 ops/sec
+Place/modify mix:   4,937 ops/sec
+Mixed workload:     5,611 ops/sec
+
+Profiling Findings
+------------------
+Primary hotspot:
+_platform_memmove dominated CPU samples during heavy matching.
+
+Root cause:
+Active orders are stored in std::vector<LimitOrder>. Removing filled
+orders with vector::erase requires shifting subsequent elements,
+creating significant memory movement under matching-heavy workloads.
+
+Additional Bottlenecks
+----------------------
+1. Linear scan in MatchingEngine::find_best_match().
+2. Linear lookup in OrderManager::find_order().
+3. Linear lookup followed by vector erase in cancel_order().
+4. State copies used for strong exception safety in critical paths.
+
+Optimization Opportunities
+--------------------------
+- Reduce copying and unnecessary allocations in hot paths.
+- Improve active-order lookup/removal complexity.
+- Reduce repeated full-book scans during matching.
+- Preserve price-time priority and existing correctness guarantees.

@@ -1,0 +1,166 @@
+Analysis of sampling throughput_benchmark (pid 4699) every 1 millisecond
+Process:         throughput_benchmark [4699]
+Path:            /Users/USER/*/throughput_benchmark
+Load Address:    0x10257c000
+Identifier:      throughput_benchmark
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [79135]
+Target Type:     live task
+
+Date/Time:       2026-09-08 14:29:38.806 -0400
+Launch Time:     2026-09-08 14:29:34.714 -0400
+OS Version:      macOS 26.3.1 (25D2128)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         53.4M
+Physical footprint (peak):  53.4M
+Idle exit:                  untracked
+----
+
+Call graph:
+    8481 Thread_27775172   DispatchQueue_1: com.apple.main-thread  (serial)
+      8481 start  (in dyld) + 7184  [0x189981d54]
+        7919 main  (in throughput_benchmark) + 984  [0x10257d0f0]
+        + 2759 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 728,740,...  [0x10257ef70,0x10257ef7c,...]
+        + 2203 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 920  [0x10257f030]
+        + ! 2203 OrderManager::cancel_order(unsigned long long)  (in throughput_benchmark) + 92  [0x1025835e4]
+        + !   2203 _platform_memmove  (in libsystem_platform.dylib) + 280,296,...  [0x189d55498,0x189d554a8,...]
+        + 1965 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 468  [0x10257ee6c]
+        + ! 1965 _platform_memmove  (in libsystem_platform.dylib) + 88,108  [0x189d553d8,0x189d553ec]
+        + 960 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 640  [0x10257ef18]
+        + ! 960 _platform_memmove  (in libsystem_platform.dylib) + 88,108  [0x189d553d8,0x189d553ec]
+        + 10 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 1024  [0x10257f098]
+        + ! 7 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 576  [0x189b55c7c]
+        + ! : 7 _xzm_segment_group_segment_span_free_coalesce  (in libsystem_malloc.dylib) + 228  [0x189b56288]
+        + ! :   7 _xzm_segment_group_span_mark_used  (in libsystem_malloc.dylib) + 120  [0x189b57b38]
+        + ! :     4 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 176  [0x189b54df0]
+        + ! :     | 3 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + ! :     | + 3 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + ! :     | 1 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 108  [0x189d1bf84]
+        + ! :     3 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 124  [0x189b54dbc]
+        + ! :       2 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 60  [0x189b572d0]
+        + ! :       + 2 mach_vm_reclaim_try_cancel  (in libsystem_kernel.dylib) + 260  [0x189d1bdd4]
+        + ! :       +   2 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x189d090fc]
+        + ! :       1 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 36  [0x189b572b8]
+        + ! 2 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 792  [0x189b55d54]
+        + ! : 2 _xzm_segment_group_span_mark_free  (in libsystem_malloc.dylib) + 104  [0x189b564a4]
+        + ! :   2 _xzm_reclaim_mark_free  (in libsystem_malloc.dylib) + 164  [0x189b54c3c]
+        + ! :     2 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + ! :       2 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + ! 1 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 524  [0x189b55c48]
+        + 8 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 448  [0x10257ee58]
+        + ! 8 operator new(unsigned long)  (in libc++abi.dylib) + 52  [0x189d03a78]
+        + !   8 _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 272  [0x189b6ae58]
+        + !     8 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 340  [0x189b54f64]
+        + !       8 _xzm_segment_group_cache_mark_used  (in libsystem_malloc.dylib) + 60  [0x189b576e4]
+        + !         7 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 176  [0x189b54df0]
+        + !         : 7 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + !         :   7 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + !         1 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 124  [0x189b54dbc]
+        + !           1 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 60  [0x189b572d0]
+        + !             1 mach_vm_reclaim_try_cancel  (in libsystem_kernel.dylib) + 260  [0x189d1bdd4]
+        + !               1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x189d090fc]
+        + 8 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 612  [0x10257eefc]
+        + ! 8 operator new(unsigned long)  (in libc++abi.dylib) + 52  [0x189d03a78]
+        + !   8 _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 272  [0x189b6ae58]
+        + !     7 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 556  [0x189b5503c]
+        + !     : 7 _xzm_segment_group_find_and_allocate_chunk  (in libsystem_malloc.dylib) + 448  [0x189b55648]
+        + !     :   6 _xzm_segment_group_span_mark_smaller  (in libsystem_malloc.dylib) + 436  [0x189b56aa4]
+        + !     :   | 6 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + !     :   |   6 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + !     :   1 _xzm_segment_group_span_mark_smaller  (in libsystem_malloc.dylib) + 248  [0x189b569e8]
+        + !     :     1 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 60  [0x189b572d0]
+        + !     :       1 mach_vm_reclaim_try_cancel  (in libsystem_kernel.dylib) + 256  [0x189d1bdd0]
+        + !     1 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 340  [0x189b54f64]
+        + !       1 _xzm_segment_group_cache_mark_used  (in libsystem_malloc.dylib) + 60  [0x189b576e4]
+        + !         1 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 176  [0x189b54df0]
+        + !           1 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + !             1 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + 4 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 1036  [0x10257f0a4]
+        + ! 4 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 1864  [0x189b56184]
+        + !   4 _xzm_segment_group_cache_mark_free  (in libsystem_malloc.dylib) + 52  [0x189b57a78]
+        + !     3 _xzm_reclaim_mark_free  (in libsystem_malloc.dylib) + 164  [0x189b54c3c]
+        + !     : 3 mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        + !     :   3 mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 8  [0x189d08cb8]
+        + !     1 _xzm_reclaim_mark_free  (in libsystem_malloc.dylib) + 112  [0x189b54c08]
+        + !       1 xzm_reclaim_mark_free_locked  (in libsystem_malloc.dylib) + 116  [0x189b54724]
+        + !         1 mach_vm_reclaim_try_enter  (in libsystem_kernel.dylib) + 296  [0x189d1bc54]
+        + !           1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x189d090fc]
+        + 1 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 1068  [0x10257f0c4]
+        + ! 1 _xzm_free  (in libsystem_malloc.dylib) + 304  [0x189b6b874]
+        + 1 _xzm_free  (in libsystem_malloc.dylib) + 1380  [0x189b6bca8]
+        562 main  (in throughput_benchmark) + 940  [0x10257d0c4]
+          560 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 516  [0x10257ee9c]
+          ! 559 OrderManager::add_order(LimitOrder const&)  (in throughput_benchmark) + 60,72,...  [0x1025833f4,0x102583400,...]
+          ! 1 OrderManager::add_order(LimitOrder const&)  (in throughput_benchmark) + 36  [0x1025833dc]
+          !   1 OrderManager::validate_order(LimitOrder const&)  (in throughput_benchmark) + 164  [0x102583150]
+          !     1 operator new(unsigned long)  (in libc++abi.dylib) + 52  [0x189d03a78]
+          !       1 <deduplicated_symbol>  (in libsystem_malloc.dylib) + 132  [0x189b6aca4]
+          1 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 96  [0x10257ecf8]
+          ! 1 operator new(unsigned long)  (in libc++abi.dylib) + 52  [0x189d03a78]
+          !   1 <deduplicated_symbol>  (in libsystem_malloc.dylib) + 104  [0x189b6ac88]
+          1 MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark) + 1068  [0x10257f0c4]
+            1 _xzm_free  (in libsystem_malloc.dylib) + 728  [0x189b6ba1c]
+              1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x189d090fc]
+
+Total number in stack (recursive counted multiple, when >=5):
+        6       mach_vm_reclaim_update_kernel_accounting  (in libsystem_kernel.dylib) + 92  [0x189d1bf74]
+        6       mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib) + 0  [0x189d08cb0]
+
+Sort by top of stack, same collapsed (when >= 5):
+        _platform_memmove  (in libsystem_platform.dylib)        5128
+        MatchingEngine::place_limit_order(OrderSide, long long, long long)  (in throughput_benchmark)        2759
+        OrderManager::add_order(LimitOrder const&)  (in throughput_benchmark)        559
+        mach_vm_reclaim_update_kernel_accounting_trap  (in libsystem_kernel.dylib)        22
+        mach_absolute_time  (in libsystem_kernel.dylib)        5
+
+Binary Images:
+       0x10257c000 -        0x1025847b7 +throughput_benchmark (0) <8CA9580D-67EB-34DE-AD4D-344B10CD7707> /Users/*/throughput_benchmark
+       0x1898f4000 -        0x1899474bb  libobjc.A.dylib (951.1) <9E66CFF2-3EBD-3242-8166-D5D0C204755B> /usr/lib/libobjc.A.dylib
+       0x189948000 -        0x189978bcb  libdyld.dylib (1340) <D0CBB392-9301-3174-8904-D869F1D973CF> /usr/lib/system/libdyld.dylib
+       0x189979000 -        0x189a18713  dyld (1.0.0 - 1340) <044CD67E-3A0A-3CA4-8BB3-A9687D5328FE> /usr/lib/dyld
+       0x189a19000 -        0x189a1c1d0  libsystem_blocks.dylib (96) <F1D9FC62-B5CE-3FB6-B264-B1933396C05F> /usr/lib/system/libsystem_blocks.dylib
+       0x189a1d000 -        0x189a7207f  libxpc.dylib (3089.80.10) <3B264F68-2825-3790-8796-4B49581D6425> /usr/lib/system/libxpc.dylib
+       0x189a73000 -        0x189a9395f  libsystem_trace.dylib (1815.80.2) <2CE5667A-97C5-35F3-8124-BB48185D0D3D> /usr/lib/system/libsystem_trace.dylib
+       0x189a94000 -        0x189b40ccf  libcorecrypto.dylib (1922.80.7) <A6FB5220-05F1-36A3-93CA-E45F15C98D3A> /usr/lib/system/libcorecrypto.dylib
+       0x189b41000 -        0x189b8cc67  libsystem_malloc.dylib (792.80.2) <102061AD-AC62-30E9-A960-0CC2E38A2D5D> /usr/lib/system/libsystem_malloc.dylib
+       0x189b8d000 -        0x189bd3e5f  libdispatch.dylib (1542.0.4) <4C58AB31-F363-3E75-A8F8-302105812DBF> /usr/lib/system/libdispatch.dylib
+       0x189bd4000 -        0x189bd6feb  libsystem_featureflags.dylib (101) <36BE75BA-0B53-3ACA-ABAF-C639D711C90B> /usr/lib/system/libsystem_featureflags.dylib
+       0x189bd7000 -        0x189c59047  libsystem_c.dylib (1725.40.4) <EB569350-0696-3397-838E-0344948107C0> /usr/lib/system/libsystem_c.dylib
+       0x189c5a000 -        0x189cecea3  libc++.1.dylib (2000.67) <652836CA-32B1-3388-A72A-D6B90DDDA958> /usr/lib/libc++.1.dylib
+       0x189ced000 -        0x189d0792f  libc++abi.dylib (2000.67) <580BCE60-F6A6-3764-BFE9-57A0DB800C54> /usr/lib/libc++abi.dylib
+       0x189d08000 -        0x189d4449f  libsystem_kernel.dylib (12377.91.3) <78EC33A6-6330-3836-8900-EB90836936E8> /usr/lib/system/libsystem_kernel.dylib
+       0x189d45000 -        0x189d51acb  libsystem_pthread.dylib (539.80.3) <0596A7B6-BCE2-3F06-A2E8-3EAAB5371ED8> /usr/lib/system/libsystem_pthread.dylib
+       0x189d52000 -        0x189d5a4af  libsystem_platform.dylib (359.80.2) <62C9CD37-272D-3D2D-9A1C-6F4EF24F7EC7> /usr/lib/system/libsystem_platform.dylib
+       0x189d5b000 -        0x189d8ae23  libsystem_info.dylib (600) <05CCB208-0B54-38D8-B736-6C7043F446AA> /usr/lib/system/libsystem_info.dylib
+       0x18dd05000 -        0x18dd0f397  libsystem_darwin.dylib (1725.40.4) <EAC9A3D8-2048-3E6A-BA11-77D1C25C0EF3> /usr/lib/system/libsystem_darwin.dylib
+       0x18e176000 -        0x18e187ff3  libsystem_notify.dylib (344.0.1) <73D7BFA7-9433-3ECD-929F-06220C37F214> /usr/lib/system/libsystem_notify.dylib
+       0x190452000 -        0x19046cfdb  libsystem_networkextension.dylib (2205.81.1) <645A9697-79B5-3E35-A642-5FFDD53CB6A7> /usr/lib/system/libsystem_networkextension.dylib
+       0x1904f0000 -        0x190507ff3  libsystem_asl.dylib (406) <2A30FE38-5014-334B-941B-579054EA8C1E> /usr/lib/system/libsystem_asl.dylib
+       0x1920cc000 -        0x1920d43b7  libsystem_symptoms.dylib (2158.80.11) <ED7EEE1F-0CA6-30CF-9A27-7440EE0661BC> /usr/lib/system/libsystem_symptoms.dylib
+       0x196096000 -        0x1960ce2bb  libsystem_containermanager.dylib (725.80.5) <1DDF96F6-6A8A-33F5-8691-8D3356620687> /usr/lib/system/libsystem_containermanager.dylib
+       0x1974ec000 -        0x1974f066f  libsystem_configuration.dylib (1385.80.4) <E5837A49-4BF9-3D25-8671-A6174223010A> /usr/lib/system/libsystem_configuration.dylib
+       0x1974f1000 -        0x1974f76a7  libsystem_sandbox.dylib (2680.80.20) <8875D51A-D22D-3A6B-9A17-8D565C96262C> /usr/lib/system/libsystem_sandbox.dylib
+       0x198a8a000 -        0x198a8d1fb  libquarantine.dylib (196.40.3) <84049E82-ACDC-39F3-A2D7-6ECB912B825A> /usr/lib/system/libquarantine.dylib
+       0x19921a000 -        0x19922100b  libsystem_coreservices.dylib (191.3.3) <94151A03-8600-3318-8719-103E2D5E83A5> /usr/lib/system/libsystem_coreservices.dylib
+       0x199774000 -        0x1997b18b7  libsystem_m.dylib (3309) <9B88F30F-0BEF-391B-A358-8D1E2B08CCBE> /usr/lib/system/libsystem_m.dylib
+       0x1997b3000 -        0x1997b6537  libmacho.dylib (1030.6.3) <D84C5B4C-6EE5-3B2D-8B96-DCA5B83EC11D> /usr/lib/system/libmacho.dylib
+       0x1997d0000 -        0x1997dd61f  libcommonCrypto.dylib (600035) <04C03765-D34A-311F-AE1E-CFBB1E627E54> /usr/lib/system/libcommonCrypto.dylib
+       0x1997de000 -        0x1997e7b0b  libunwind.dylib (1900.125) <F8A54A94-01E7-32FD-8CBD-A6E62CE80120> /usr/lib/system/libunwind.dylib
+       0x1997f0000 -        0x1997fa6ff  libcopyfile.dylib (230.0.1.0.1) <4EBDFB06-9F51-3FEF-A4D8-B1AFB9D0E823> /usr/lib/system/libcopyfile.dylib
+       0x1997fb000 -        0x1997fe95f  libcompiler_rt.dylib (103.3) <55AFEF28-E352-38B8-ACD6-60B67AA83B68> /usr/lib/system/libcompiler_rt.dylib
+       0x1997ff000 -        0x199803a1b  libsystem_collections.dylib (1725.40.4) <17BD45DA-1D82-3A90-9F18-5D569A5693B5> /usr/lib/system/libsystem_collections.dylib
+       0x199804000 -        0x1998074bf  libsystem_secinit.dylib (168.40.2) <0928D7E4-5DB0-3B75-9DF5-08EC8E9C033B> /usr/lib/system/libsystem_secinit.dylib
+       0x199808000 -        0x19980ab57  libremovefile.dylib (84) <D854E7F8-C351-331B-9A26-BE66F9B8996D> /usr/lib/system/libremovefile.dylib
+       0x19980b000 -        0x19980bf27  libkeymgr.dylib (31) <18ED97A3-6DD7-3EC2-AB38-E16A862BE1A7> /usr/lib/system/libkeymgr.dylib
+       0x19980c000 -        0x199814f8f  libsystem_dnssd.dylib (2881.80.4.0.1) <A3401BB5-786C-32DC-A9A0-E8405AE9E0CD> /usr/lib/system/libsystem_dnssd.dylib
+       0x199815000 -        0x19981a0b3  libcache.dylib (95) <EA56E91F-7683-3AA5-AF72-185994622502> /usr/lib/system/libcache.dylib
+       0x19981b000 -        0x19981ccf3  libSystem.B.dylib (1356) <44B9EC51-9AC9-3D3B-A7F8-DEB02133130A> /usr/lib/libSystem.B.dylib
+       0x287d95000 -        0x287d9c319  libRosetta.dylib (367.3) <5315C55D-09E5-394B-A9E5-672B23847BF7> /usr/lib/libRosetta.dylib
+       0x2894a5000 -        0x2894a8deb  libsystem_darwindirectory.dylib (122) <9AD833C7-D009-39FF-8D04-D57C937D9EAC> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2894a9000 -        0x2894b234b  libsystem_eligibility.dylib (289.80.56) <0E973CB5-A124-3716-9841-1EA67809AF06> /usr/lib/system/libsystem_eligibility.dylib
+       0x2894b3000 -        0x2894ba873  libsystem_sanitizers.dylib (25) <90C45178-3954-3108-9F2F-44E528DF5E44> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2894bb000 -        0x2894bbbb7  libsystem_trial.dylib (474.2.0.5.2) <E776BAEB-B36B-3EA2-BEFE-3E2F7999E235> /usr/lib/system/libsystem_trial.dylib

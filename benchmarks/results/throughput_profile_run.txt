@@ -1,0 +1,14 @@
+
+cmarket Throughput Benchmark
+==============================================================================
+Operations per workload: 100000
+Initial active orders: 100000
+
+Workload                        Operations         Seconds           Ops/sec
+----------------------------------------------------------------------------
+Order placement                     100000           2.418             41353
+Heavy matching                      100000          24.983              4003
+Place/cancel mix                    100000          11.049              9050
+Place/modify mix                    100000          20.439              4893
+Mixed workload                      100000          17.026              5873
+
