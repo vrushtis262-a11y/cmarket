@@ -297,6 +297,186 @@ TEST(TradeStoreTest, RejectedTradeDoesNotConsumeIds)
     );
 }
 
+TEST(TradeStoreTest, CheckpointCapturesCurrentState)
+{
+    TradeStore store;
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Buy,
+            520'000,
+            10
+        )
+    );
+
+    const TradeStore::Checkpoint checkpoint =
+        store.checkpoint();
+
+    EXPECT_EQ(
+        checkpoint.trade_count,
+        1U
+    );
+
+    EXPECT_EQ(
+        checkpoint.next_trade_id,
+        2U
+    );
+
+    EXPECT_EQ(
+        checkpoint.next_execution_sequence,
+        2U
+    );
+}
+
+TEST(TradeStoreTest, RollbackRemovesTradesAfterCheckpoint)
+{
+    TradeStore store;
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Buy,
+            520'000,
+            10
+        )
+    );
+
+    const TradeStore::Checkpoint checkpoint =
+        store.checkpoint();
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Sell,
+            525'000,
+            20
+        )
+    );
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Buy,
+            530'000,
+            30
+        )
+    );
+
+    ASSERT_EQ(
+        store.trades().size(),
+        3U
+    );
+
+    store.rollback(
+        checkpoint
+    );
+
+    ASSERT_EQ(
+        store.trades().size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        store.trades().front().trade_id,
+        1U
+    );
+}
+
+TEST(TradeStoreTest, RollbackRestoresTradeIds)
+{
+    TradeStore store;
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Buy,
+            520'000,
+            10
+        )
+    );
+
+    const TradeStore::Checkpoint checkpoint =
+        store.checkpoint();
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Sell,
+            525'000,
+            20
+        )
+    );
+
+    store.rollback(
+        checkpoint
+    );
+
+    const Trade& trade =
+        store.record_trade(
+            OrderSide::Buy,
+            530'000,
+            30
+        );
+
+    EXPECT_EQ(
+        trade.trade_id,
+        2U
+    );
+}
+
+TEST(TradeStoreTest, RollbackRestoresExecutionSequence)
+{
+    TradeStore store;
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Buy,
+            520'000,
+            10
+        )
+    );
+
+    const TradeStore::Checkpoint checkpoint =
+        store.checkpoint();
+
+    static_cast<void>(
+        store.record_trade(
+            OrderSide::Sell,
+            525'000,
+            20
+        )
+    );
+
+    store.rollback(
+        checkpoint
+    );
+
+    const Trade& trade =
+        store.record_trade(
+            OrderSide::Buy,
+            530'000,
+            30
+        );
+
+    EXPECT_EQ(
+        trade.execution_sequence,
+        2U
+    );
+}
+
+TEST(TradeStoreTest, RejectsCheckpointNewerThanCurrentState)
+{
+    TradeStore store;
+
+    const TradeStore::Checkpoint checkpoint{
+        .trade_count = 1,
+        .next_trade_id = 2,
+        .next_execution_sequence = 2
+    };
+
+    EXPECT_THROW(
+        store.rollback(
+            checkpoint
+        ),
+        std::invalid_argument
+    );
+}
+
 TEST(TradeStoreTest, ClearRemovesStoredTrades)
 {
     TradeStore store;

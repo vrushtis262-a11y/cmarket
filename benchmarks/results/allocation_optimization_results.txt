@@ -1,0 +1,101 @@
+cmarket Allocation Optimization Results
+========================================
+
+Optimizations
+-------------
+1. Removed the unconditional full OrderBook backup from ordinary
+   non-crossing limit-order placement.
+
+   Ordinary placements now use targeted rollback for the individual
+   order-book adjustment. Full OrderBook rollback remains available
+   for first-local-order and crossing/matching paths.
+
+2. Replaced full TradeStore rollback copies with lightweight
+   checkpoints.
+
+   Checkpoints preserve:
+   - Stored trade count
+   - Next trade ID
+   - Next execution sequence number
+
+   This avoids copying the entire accumulated trade history during
+   matching and modify operations.
+
+3. Removed full OrderBook and OrderManager rollback copies from
+   cancel_order().
+
+   Cancellation now stores only the single order being removed.
+   If the order-book adjustment fails, the removed order is restored
+   directly.
+
+Correctness
+-----------
+Full test suite passed after the final optimization:
+
+163 / 163 tests passed.
+
+Profiling Baseline
+------------------
+Order placement:   40,640 ops/sec
+Heavy matching:     3,839 ops/sec
+Place/cancel mix:   8,868 ops/sec
+Place/modify mix:   4,937 ops/sec
+Mixed workload:     5,611 ops/sec
+
+Final Throughput Results
+------------------------
+Three-run average after the retained Day 2 optimizations:
+
+Order placement:   41,336 ops/sec
+Heavy matching:     6,722 ops/sec
+Place/cancel mix:  14,177 ops/sec
+Place/modify mix:   4,723 ops/sec
+Mixed workload:     6,668 ops/sec
+
+Comparison With Profiling Baseline
+----------------------------------
+Order placement:   40,640 -> 41,336 ops/sec   (+1.7%)
+Heavy matching:     3,839 ->  6,722 ops/sec  (+75.1%)
+Place/cancel mix:   8,868 -> 14,177 ops/sec  (+59.9%)
+Place/modify mix:   4,937 ->  4,723 ops/sec   (-4.3%)
+Mixed workload:     5,611 ->  6,668 ops/sec  (+18.8%)
+
+Key Findings
+------------
+The largest improvement came from eliminating full rollback copies
+from cancellation. Place/cancel throughput increased from the final
+pre-change average of approximately 8,696 ops/sec to approximately
+14,177 ops/sec, an improvement of about 63%.
+
+Replacing TradeStore copies with checkpoints substantially improved
+heavy matching performance while preserving trade IDs, execution
+sequence numbers, and rollback behavior.
+
+The final heavy-matching throughput is approximately 75% higher than
+the original profiling baseline.
+
+The place/modify workload remains slightly below the original baseline.
+Its remaining hot path still performs full OrderBook and OrderManager
+rollback copies and uses vector-based order storage. These costs are
+better addressed by the planned data-structure optimization work.
+
+Remaining Full Rollback Copies
+------------------------------
+Full OrderBook and OrderManager backups remain in:
+- execute_market_order()
+- modify_order()
+
+These paths perform multi-step matching mutations and are intentionally
+left unchanged for now to preserve strong exception safety.
+
+No full TradeStore rollback copies remain.
+
+Result
+------
+The Day 2 allocation optimizations were retained because they preserve
+correctness and materially improve the most allocation-sensitive
+workloads.
+
+Further optimization of matching, lookup, cancellation, and modify
+behavior will be handled through the data-structure improvements in
+the next performance-engineering phase.

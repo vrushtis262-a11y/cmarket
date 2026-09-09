@@ -4,12 +4,21 @@
 #include "execution.hpp"
 #include "validation.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 class TradeStore {
 public:
+    struct Checkpoint {
+        std::size_t trade_count;
+        TradeId next_trade_id;
+        TradeSequenceNumber
+            next_execution_sequence;
+    };
+
     [[nodiscard]]
     const Trade& record_trade(
         OrderSide aggressor_side,
@@ -34,9 +43,55 @@ public:
             .execution_sequence = next_execution_sequence_++
         };
 
-        trades_.push_back(trade);
+        try {
+            trades_.push_back(
+                trade
+            );
+        }
+        catch (...) {
+            --next_trade_id_;
+            --next_execution_sequence_;
+
+            throw;
+        }
 
         return trades_.back();
+    }
+
+    [[nodiscard]]
+    Checkpoint checkpoint() const noexcept
+    {
+        return Checkpoint{
+            .trade_count = trades_.size(),
+            .next_trade_id = next_trade_id_,
+            .next_execution_sequence =
+                next_execution_sequence_
+        };
+    }
+
+    void rollback(
+        const Checkpoint& checkpoint
+    )
+    {
+        if (
+            checkpoint.trade_count >
+            trades_.size()
+        ) {
+            throw std::invalid_argument(
+                "TradeStore checkpoint is newer "
+                "than the current trade state."
+            );
+        }
+
+        trades_.resize(
+            checkpoint.trade_count
+        );
+
+        next_trade_id_ =
+            checkpoint.next_trade_id;
+
+        next_execution_sequence_ =
+            checkpoint.next_execution_sequence;
     }
 
     [[nodiscard]]

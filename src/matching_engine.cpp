@@ -74,8 +74,9 @@ ExecutionResult MatchingEngine::execute_market_order(
     OrderManager order_manager_backup =
         order_manager_;
 
-    TradeStore trade_store_backup =
-        trade_store_;
+    const TradeStore::Checkpoint
+        trade_store_checkpoint =
+            trade_store_.checkpoint();
 
     try {
         ExecutionResult result{
@@ -328,10 +329,9 @@ ExecutionResult MatchingEngine::execute_market_order(
                 order_manager_backup
             );
 
-        trade_store_ =
-            std::move(
-                trade_store_backup
-            );
+        trade_store_.rollback(
+            trade_store_checkpoint
+        );
 
         throw;
     }
@@ -370,9 +370,6 @@ OrderId MatchingEngine::place_limit_order(
         quantity
     );
 
-    OrderBook order_book_backup =
-        order_book_;
-
     OrderIdGenerator order_id_generator_backup =
         order_id_generator_;
 
@@ -381,6 +378,24 @@ OrderId MatchingEngine::place_limit_order(
 
     const bool first_local_order =
         order_manager_.orders().empty();
+
+    std::optional<OrderBook>
+        order_book_backup;
+
+    std::optional<OrderManager>
+        order_manager_backup;
+
+    std::optional<TradeStore::Checkpoint>
+        trade_store_checkpoint;
+
+    bool non_crossing_book_adjusted =
+        false;
+
+    if (first_local_order) {
+        order_book_backup.emplace(
+            order_book_
+        );
+    }
 
     try {
         if (first_local_order) {
@@ -416,89 +431,46 @@ OrderId MatchingEngine::place_limit_order(
                 incoming_order.remaining_quantity
             );
 
-            try {
-                order_manager_.add_order(
-                    incoming_order
-                );
-            }
-            catch (...) {
-                order_book_ =
-                    std::move(
-                        order_book_backup
-                    );
+            non_crossing_book_adjusted =
+                true;
 
-                order_id_generator_ =
-                    std::move(
-                        order_id_generator_backup
-                    );
-
-                next_sequence_number_ =
-                    sequence_number_backup;
-
-                throw;
-            }
-
-            return order_id;
-        }
-
-        OrderManager order_manager_backup =
-            order_manager_;
-
-        TradeStore trade_store_backup =
-            trade_store_;
-
-        try {
-            match_limit_order(
+            order_manager_.add_order(
                 incoming_order
             );
 
-            if (!incoming_order.is_filled()) {
-                order_manager_.add_order(
-                    incoming_order
-                );
-
-                adjust_order_book(
-                    incoming_order.side,
-                    incoming_order.price_ticks,
-                    incoming_order.remaining_quantity
-                );
-            }
-
             return order_id;
         }
-        catch (...) {
-            order_book_ =
-                std::move(
-                    order_book_backup
-                );
 
-            order_id_generator_ =
-                std::move(
-                    order_id_generator_backup
-                );
+        order_book_backup.emplace(
+            order_book_
+        );
 
-            next_sequence_number_ =
-                sequence_number_backup;
+        order_manager_backup.emplace(
+            order_manager_
+        );
 
-            order_manager_ =
-                std::move(
-                    order_manager_backup
-                );
+        trade_store_checkpoint =
+            trade_store_.checkpoint();
 
-            trade_store_ =
-                std::move(
-                    trade_store_backup
-                );
+        match_limit_order(
+            incoming_order
+        );
 
-            throw;
-        }
-    }
-    catch (...) {
-        order_book_ =
-            std::move(
-                order_book_backup
+        if (!incoming_order.is_filled()) {
+            order_manager_.add_order(
+                incoming_order
             );
 
+            adjust_order_book(
+                incoming_order.side,
+                incoming_order.price_ticks,
+                incoming_order.remaining_quantity
+            );
+        }
+
+        return order_id;
+    }
+    catch (...) {
         order_id_generator_ =
             std::move(
                 order_id_generator_backup
@@ -506,6 +478,33 @@ OrderId MatchingEngine::place_limit_order(
 
         next_sequence_number_ =
             sequence_number_backup;
+
+        if (order_manager_backup.has_value()) {
+            order_manager_ =
+                std::move(
+                    *order_manager_backup
+                );
+        }
+
+        if (trade_store_checkpoint.has_value()) {
+            trade_store_.rollback(
+                *trade_store_checkpoint
+            );
+        }
+
+        if (order_book_backup.has_value()) {
+            order_book_ =
+                std::move(
+                    *order_book_backup
+                );
+        }
+        else if (non_crossing_book_adjusted) {
+            adjust_order_book(
+                side,
+                price_ticks,
+                -quantity
+            );
+        }
 
         throw;
     }
@@ -722,43 +721,31 @@ bool MatchingEngine::cancel_order(
     const LimitOrder order_to_cancel =
         *existing_order;
 
-    OrderBook order_book_backup =
-        order_book_;
+    const bool cancelled =
+        order_manager_.cancel_order(
+            order_id
+        );
 
-    OrderManager order_manager_backup =
-        order_manager_;
+    if (!cancelled) {
+        return false;
+    }
 
     try {
-        const bool cancelled =
-            order_manager_.cancel_order(
-                order_id
-            );
-
-        if (!cancelled) {
-            return false;
-        }
-
         adjust_order_book(
             order_to_cancel.side,
             order_to_cancel.price_ticks,
             -order_to_cancel.remaining_quantity
         );
-
-        return true;
     }
     catch (...) {
-        order_book_ =
-            std::move(
-                order_book_backup
-            );
-
-        order_manager_ =
-            std::move(
-                order_manager_backup
-            );
+        order_manager_.add_order(
+            order_to_cancel
+        );
 
         throw;
     }
+
+    return true;
 }
 
 bool MatchingEngine::modify_order(
@@ -818,8 +805,9 @@ bool MatchingEngine::modify_order(
     OrderManager order_manager_backup =
         order_manager_;
 
-    TradeStore trade_store_backup =
-        trade_store_;
+    const TradeStore::Checkpoint
+        trade_store_checkpoint =
+            trade_store_.checkpoint();
 
     try {
         if (loses_priority) {
@@ -874,10 +862,9 @@ bool MatchingEngine::modify_order(
                 order_manager_backup
             );
 
-        trade_store_ =
-            std::move(
-                trade_store_backup
-            );
+        trade_store_.rollback(
+            trade_store_checkpoint
+        );
 
         throw;
     }
