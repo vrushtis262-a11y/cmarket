@@ -1,0 +1,246 @@
+cmarket Final Performance Results
+=================================
+
+Benchmark Environment
+---------------------
+Build type: Release
+
+Throughput workloads:
+- 100,000 operations per workload
+- 100,000 initial active orders where applicable
+- Three measured runs
+- Results reported as three-run averages
+
+Latency workloads:
+- 1,000 measured iterations per operation
+- 100 warmup iterations per operation
+- Book sizes: 100, 1,000, 10,000, and 100,000 active orders
+- Three measured runs
+- Final summary emphasizes p50, p95, and p99 latency
+
+Final Throughput Results
+------------------------
+Three-run average:
+
+Order placement:   41,604 ops/sec
+Heavy matching:     8,437 ops/sec
+Place/cancel mix:  20,791 ops/sec
+Place/modify mix:   5,861 ops/sec
+Mixed workload:     8,882 ops/sec
+
+Throughput Run Details
+----------------------
+Run 1:
+Order placement:   42,068 ops/sec
+Heavy matching:     8,475 ops/sec
+Place/cancel mix:  21,074 ops/sec
+Place/modify mix:   5,968 ops/sec
+Mixed workload:     8,979 ops/sec
+
+Run 2:
+Order placement:   41,622 ops/sec
+Heavy matching:     8,401 ops/sec
+Place/cancel mix:  20,614 ops/sec
+Place/modify mix:   5,849 ops/sec
+Mixed workload:     8,844 ops/sec
+
+Run 3:
+Order placement:   41,121 ops/sec
+Heavy matching:     8,435 ops/sec
+Place/cancel mix:  20,685 ops/sec
+Place/modify mix:   5,766 ops/sec
+Mixed workload:     8,824 ops/sec
+
+Comparison With Original Profiling Baseline
+-------------------------------------------
+Original profiling baseline:
+
+Order placement:   40,640 ops/sec
+Heavy matching:     3,839 ops/sec
+Place/cancel mix:   8,868 ops/sec
+Place/modify mix:   4,937 ops/sec
+Mixed workload:     5,611 ops/sec
+
+Final comparison:
+
+Order placement:   40,640 -> 41,604 ops/sec    (+2.4%)
+Heavy matching:     3,839 ->  8,437 ops/sec  (+119.8%)
+Place/cancel mix:   8,868 -> 20,791 ops/sec  (+134.4%)
+Place/modify mix:   4,937 ->  5,861 ops/sec   (+18.7%)
+Mixed workload:     5,611 ->  8,882 ops/sec   (+58.3%)
+
+Latency Results at 100,000 Active Orders
+----------------------------------------
+Three-run average:
+
+Operation              p50          p95          p99
+--------------------------------------------------------
+Place order          47.7 us      49.7 us      58.6 us
+Match order         189.5 us     203.3 us     262.6 us
+Cancel order         47.8 us      50.7 us      61.7 us
+Modify order        219.1 us     233.1 us     255.5 us
+Multi-level match     1.994 ms      2.073 ms      2.149 ms
+
+Latency Run Details at 100,000 Active Orders
+--------------------------------------------
+Run 1:
+
+Place order:
+p50:    48,125 ns
+p95:    49,791 ns
+p99:    55,833 ns
+worst:  75,708 ns
+
+Match order:
+p50:   186,792 ns
+p95:   191,208 ns
+p99:   199,709 ns
+worst: 331,708 ns
+
+Cancel order:
+p50:    47,833 ns
+p95:    47,959 ns
+p99:    51,625 ns
+worst:  73,458 ns
+
+Modify order:
+p50:   219,084 ns
+p95:   232,500 ns
+p99:   245,334 ns
+worst: 267,500 ns
+
+Multi-level match:
+p50: 1,995,250 ns
+p95: 2,062,750 ns
+p99: 2,110,792 ns
+worst: 3,150,333 ns
+
+Run 2:
+
+Place order:
+p50:    46,959 ns
+p95:    48,459 ns
+p99:    55,958 ns
+worst:  75,583 ns
+
+Match order:
+p50:   194,750 ns
+p95:   221,375 ns
+p99:   379,958 ns
+worst: 713,292 ns
+
+Cancel order:
+p50:    47,833 ns
+p95:    49,458 ns
+p99:    57,875 ns
+worst:  76,708 ns
+
+Modify order:
+p50:   218,208 ns
+p95:   222,125 ns
+p99:   226,042 ns
+worst: 244,208 ns
+
+Multi-level match:
+p50: 1,989,083 ns
+p95: 2,024,084 ns
+p99: 2,080,542 ns
+worst: 2,352,583 ns
+
+Run 3:
+
+Place order:
+p50:    47,875 ns
+p95:    50,750 ns
+p99:    64,000 ns
+worst: 156,541 ns
+
+Match order:
+p50:   186,958 ns
+p95:   197,458 ns
+p99:   208,041 ns
+worst: 273,750 ns
+
+Cancel order:
+p50:    47,834 ns
+p95:    54,584 ns
+p99:    75,667 ns
+worst: 140,667 ns
+
+Modify order:
+p50:   220,000 ns
+p95:   244,667 ns
+p99:   295,125 ns
+worst: 441,375 ns
+
+Multi-level match:
+p50: 1,998,541 ns
+p95: 2,133,334 ns
+p99: 2,256,000 ns
+worst: 2,622,000 ns
+
+Interpretation
+--------------
+Throughput results are stable across the three measured runs.
+
+The largest improvement relative to the original profiling baseline is
+the place/cancel workload, which improved by approximately 134%.
+
+Heavy matching throughput improved by approximately 120%.
+
+Mixed workload throughput improved by approximately 58%.
+
+At 100,000 active orders, placement and cancellation both remain below
+approximately 50 microseconds at p50.
+
+Single-order matching remains below approximately 190 microseconds at
+p50.
+
+Modify latency remains approximately 219 microseconds at p50.
+
+A 10-level market match across a 100,000-order book requires
+approximately 2.0 milliseconds at p50.
+
+Worst-case latency is intentionally not treated as a deterministic
+engine bound. The benchmark runs on a general-purpose operating system,
+and maximum observed latency is sensitive to scheduler activity and
+other system noise. p50, p95, and p99 are therefore the primary latency
+metrics.
+
+Performance Evolution
+---------------------
+The final results reflect the cumulative retained performance work:
+
+- Profiling identified vector movement and rollback copying as major
+  hotspots.
+- TradeStore rollback copies were replaced with lightweight
+  checkpoints.
+- Cancellation rollback was reduced from full-state copies to targeted
+  restoration.
+- Non-crossing placement avoided unnecessary full OrderBook backups.
+- Active-order cancellation was changed from stable vector erase to
+  swap-with-back removal.
+- FIFO execution semantics were preserved by price and sequence number
+  rather than physical vector position.
+
+Remaining Bottlenecks
+---------------------
+Order lookup still performs a linear scan through active orders.
+
+Best-match discovery also scans active orders.
+
+Modify and multi-step matching paths still retain substantial rollback
+and state-management costs.
+
+The current results therefore establish a strong final Week 3 baseline
+while also identifying clear future optimization opportunities.
+
+Result
+------
+The performance-engineering phase materially improved cmarket under
+matching-heavy, cancellation-heavy, and mixed workloads while
+preserving correctness.
+
+Final correctness state:
+
+164 / 164 tests passed.
