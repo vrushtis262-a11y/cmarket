@@ -1,6 +1,8 @@
 # Build directories
 build/
+build-release/
 build-sanitize/
+build-profile/
 cmake-build-*/
 
 # macOS
@@ -22,4 +24,3 @@ compile_commands.json
 
 # Executables
 cmarket
-build-profile/

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 void OrderManager::validate_order(
     const LimitOrder& order
@@ -82,7 +83,17 @@ bool OrderManager::cancel_order(
         return false;
     }
 
-    orders_.erase(iterator);
+    if (
+        iterator !=
+        orders_.end() - 1
+    ) {
+        *iterator =
+            std::move(
+                orders_.back()
+            );
+    }
+
+    orders_.pop_back();
 
     return true;
 }

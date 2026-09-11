@@ -344,6 +344,130 @@ TEST(
 
 TEST(
     MatchingEdgeCasesTest,
+    PreservesFifoAfterCancellationReordersStorage
+)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    const OrderId first_sell =
+        engine.place_limit_sell(
+            520'000,
+            100
+        );
+
+    const OrderId second_sell =
+        engine.place_limit_sell(
+            520'000,
+            100
+        );
+
+    const OrderId third_sell =
+        engine.place_limit_sell(
+            520'000,
+            100
+        );
+
+    ASSERT_TRUE(
+        engine.cancel_order(first_sell)
+    );
+
+    const auto& reordered_orders =
+        engine.active_limit_orders();
+
+    ASSERT_EQ(
+        reordered_orders.size(),
+        2U
+    );
+
+    EXPECT_EQ(
+        reordered_orders[0].order_id,
+        third_sell
+    );
+
+    EXPECT_EQ(
+        reordered_orders[1].order_id,
+        second_sell
+    );
+
+    static_cast<void>(
+        engine.place_limit_buy(
+            520'000,
+            150
+        )
+    );
+
+    const auto& trades =
+        engine.trade_history();
+
+    ASSERT_EQ(trades.size(), 2U);
+
+    EXPECT_EQ(
+        trades[0].sell_order_id,
+        second_sell
+    );
+
+    EXPECT_EQ(
+        trades[0].quantity,
+        100
+    );
+
+    EXPECT_EQ(
+        trades[1].sell_order_id,
+        third_sell
+    );
+
+    EXPECT_EQ(
+        trades[1].quantity,
+        50
+    );
+
+    const LimitOrder* remaining_order =
+        nullptr;
+
+    for (
+        const LimitOrder& order :
+        engine.active_limit_orders()
+    ) {
+        if (
+            order.order_id ==
+            third_sell
+        ) {
+            remaining_order =
+                &order;
+
+            break;
+        }
+    }
+
+    ASSERT_NE(
+        remaining_order,
+        nullptr
+    );
+
+    EXPECT_EQ(
+        remaining_order->remaining_quantity,
+        50
+    );
+
+    ASSERT_EQ(
+        order_book.asks().size(),
+        1U
+    );
+
+    EXPECT_EQ(
+        order_book.asks()[0].price_ticks,
+        520'000
+    );
+
+    EXPECT_EQ(
+        order_book.asks()[0].quantity,
+        50
+    );
+}
+
+TEST(
+    MatchingEdgeCasesTest,
     EmptyOppositeSideLeavesLimitOrderResting
 )
 {

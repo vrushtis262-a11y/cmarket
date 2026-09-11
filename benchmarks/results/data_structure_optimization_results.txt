@@ -1,0 +1,140 @@
+cmarket Data Structure Optimization Results
+===========================================
+
+Optimization
+------------
+OrderManager cancellation was changed from stable vector erasure to
+swap-with-back removal.
+
+Previous behavior:
+- Locate the target order with a linear scan.
+- Erase the target from std::vector.
+- Shift every later LimitOrder left by one position.
+
+New behavior:
+- Locate the target order with the existing linear scan.
+- Move the final active order into the removed slot.
+- Pop the final vector element.
+
+This preserves contiguous storage and the existing public API while
+removing the O(n) element-shift cost after the target order has been
+located.
+
+Why This Is Safe
+----------------
+Physical std::vector position is not used to define matching priority.
+
+FIFO execution priority is determined by:
+- Price
+- Sequence number
+
+A dedicated regression test verifies that FIFO matching remains correct
+after cancellation causes swap-with-back to reorder physical storage.
+
+Correctness
+-----------
+Full test suite after the optimization:
+
+164 / 164 tests passed.
+
+The suite includes:
+- Order cancellation tests
+- Order lookup tests
+- Matching FIFO tests
+- FIFO after cancellation-induced storage reordering
+- Trade persistence tests
+- Exception-safety tests
+- Randomized invariant tests
+- Deterministic replay tests
+
+Day 3 Baseline
+--------------
+Three-run Release average before the retained data-structure change:
+
+Order placement:   41,015 ops/sec
+Heavy matching:     6,826 ops/sec
+Place/cancel mix:  14,061 ops/sec
+Place/modify mix:   4,884 ops/sec
+Mixed workload:     6,829 ops/sec
+
+Swap-With-Back Results
+----------------------
+Three-run Release average after swap-with-back cancellation:
+
+Order placement:   40,429 ops/sec
+Heavy matching:     8,347 ops/sec
+Place/cancel mix:  20,300 ops/sec
+Place/modify mix:   5,719 ops/sec
+Mixed workload:     8,671 ops/sec
+
+Comparison With Day 3 Baseline
+------------------------------
+Order placement:   41,015 -> 40,429 ops/sec   (-1.4%)
+Heavy matching:     6,826 ->  8,347 ops/sec  (+22.3%)
+Place/cancel mix:  14,061 -> 20,300 ops/sec  (+44.4%)
+Place/modify mix:   4,884 ->  5,719 ops/sec  (+17.1%)
+Mixed workload:     6,829 ->  8,671 ops/sec  (+27.0%)
+
+Key Finding
+-----------
+The previous cancellation path paid a large cost for std::vector::erase
+when removing orders near the middle of the active-order container.
+
+Profiling previously showed OrderManager::cancel_order feeding directly
+into _platform_memmove, confirming that shifting contiguous LimitOrder
+objects was a major hotspot.
+
+Swap-with-back removes that element-shift operation while preserving
+the advantages of contiguous vector storage.
+
+The largest measured gain is in the place/cancel workload, which
+improved by approximately 44%.
+
+Heavy matching also improved by approximately 22% because fully matched
+resting orders are removed through the same cancellation path.
+
+Modify and mixed workloads improved by approximately 17% and 27%,
+respectively.
+
+The approximately 1.4% placement-only decrease is small relative to the
+gains in mutation-heavy workloads and does not result from additional
+placement-path complexity.
+
+Rejected Experiment
+-------------------
+An OrderId-to-vector-index std::unordered_map was tested before the
+swap-with-back change.
+
+With stable vector erasure still present, cancellation required:
+- O(1) average target lookup
+- O(n) vector element shifting
+- O(n) index-map updates for shifted elements
+
+Measured performance did not improve enough to justify the additional
+state and complexity, so the experiment was reverted.
+
+The swap-with-back design changes that tradeoff because vector indices
+can now be updated in constant time after removal. A hash index may
+therefore be reconsidered independently as a future experiment.
+
+Remaining Costs
+---------------
+Order lookup still performs a linear scan.
+
+Matching still scans active orders to find the best eligible resting
+order.
+
+Full OrderManager rollback copies remain in multi-step paths including:
+- execute_market_order()
+- modify_order()
+- crossing limit-order placement
+
+These costs remain candidates for further performance work.
+
+Result
+------
+Swap-with-back cancellation is retained.
+
+It materially improves cancellation-heavy and matching-heavy workloads,
+preserves FIFO execution semantics, keeps contiguous storage, and passes
+the complete correctness suite.

@@ -608,8 +608,16 @@ TEST(OrderManagerTest, LookupRemainsCorrectAfterCancellingFirstOrder)
         manager.orders();
 
     ASSERT_EQ(orders.size(), 2U);
-    EXPECT_EQ(orders[0].order_id, 2U);
-    EXPECT_EQ(orders[1].order_id, 3U);
+
+    EXPECT_NE(
+        manager.find_order(2),
+        nullptr
+    );
+
+    EXPECT_NE(
+        manager.find_order(3),
+        nullptr
+    );
 }
 
 TEST(OrderManagerTest, LookupRemainsCorrectAfterCancellingMiddleOrder)

@@ -905,19 +905,11 @@ TEST(MatchingEngineTest, CancelsFirstOrder)
     const OrderId first =
         engine.place_limit_buy(520'000, 10);
 
-    static_cast<void>(
-        engine.place_limit_buy(
-            521'000,
-            20
-        )
-    );
+    const OrderId second =
+        engine.place_limit_buy(521'000, 20);
 
-    static_cast<void>(
-        engine.place_limit_buy(
-            522'000,
-            30
-        )
-    );
+    const OrderId third =
+        engine.place_limit_buy(522'000, 30);
 
     EXPECT_TRUE(
         engine.cancel_order(first)
@@ -928,8 +920,71 @@ TEST(MatchingEngineTest, CancelsFirstOrder)
 
     ASSERT_EQ(orders.size(), 2U);
 
-    EXPECT_EQ(orders[0].order_id, 2U);
-    EXPECT_EQ(orders[1].order_id, 3U);
+    bool found_second = false;
+    bool found_third = false;
+
+    for (const LimitOrder& order : orders) {
+        EXPECT_NE(
+            order.order_id,
+            first
+        );
+
+        if (order.order_id == second) {
+            found_second = true;
+
+            EXPECT_EQ(
+                order.price_ticks,
+                521'000
+            );
+
+            EXPECT_EQ(
+                order.remaining_quantity,
+                20
+            );
+        }
+
+        if (order.order_id == third) {
+            found_third = true;
+
+            EXPECT_EQ(
+                order.price_ticks,
+                522'000
+            );
+
+            EXPECT_EQ(
+                order.remaining_quantity,
+                30
+            );
+        }
+    }
+
+    EXPECT_TRUE(found_second);
+    EXPECT_TRUE(found_third);
+
+    ASSERT_EQ(
+        order_book.bids().size(),
+        2U
+    );
+
+    EXPECT_EQ(
+        order_book.bids()[0].price_ticks,
+        522'000
+    );
+
+    EXPECT_EQ(
+        order_book.bids()[0].quantity,
+        30
+    );
+
+    EXPECT_EQ(
+        order_book.bids()[1].price_ticks,
+        521'000
+    );
+
+    EXPECT_EQ(
+        order_book.bids()[1].quantity,
+        20
+    );
 }
 
 TEST(MatchingEngineTest, CancelsMiddleOrder)
