@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,16 @@ struct PriceLevel {
 class OrderBook {
 public:
     static constexpr std::int64_t ticks_per_unit = 1'000'000;
+
+    OrderBook() = default;
+
+    OrderBook(
+        const OrderBook& other
+    );
+
+    OrderBook& operator=(
+        const OrderBook& other
+    );
 
     void replace_snapshot(
         std::vector<PriceLevel> bids,
@@ -47,12 +58,12 @@ public:
     );
 
     [[nodiscard]]
-    const std::vector<PriceLevel>&
-    bids() const noexcept;
+    std::vector<PriceLevel>
+    bids() const;
 
     [[nodiscard]]
-    const std::vector<PriceLevel>&
-    asks() const noexcept;
+    std::vector<PriceLevel>
+    asks() const;
 
     [[nodiscard]]
     std::optional<PriceLevel>
@@ -120,6 +131,8 @@ public:
 private:
     std::vector<PriceLevel> bids_;
     std::vector<PriceLevel> asks_;
+
+    mutable std::shared_mutex mutex_;
 };
 
 #endif
