@@ -68,176 +68,29 @@ ExecutionResult MatchingEngine::execute_market_order(
         quantity
     );
 
-    OrderBook order_book_backup =
-        order_book_;
-
-    OrderManager order_manager_backup =
-        order_manager_;
-
     const TradeStore::Checkpoint
         trade_store_checkpoint =
             trade_store_.checkpoint();
 
-    try {
-        ExecutionResult result{
-            .side = side,
-            .requested_quantity = quantity,
-            .executed_quantity = 0,
-            .remaining_quantity = quantity,
-            .average_price_ticks = std::nullopt,
-            .trades = {}
-        };
+    ExecutionResult result{
+        .side = side,
+        .requested_quantity = quantity,
+        .executed_quantity = 0,
+        .remaining_quantity = quantity,
+        .average_price_ticks = std::nullopt,
+        .trades = {}
+    };
 
-        long double weighted_price_total = 0.0L;
+    long double weighted_price_total = 0.0L;
 
-        const bool uses_active_orders =
-            !order_manager_.orders().empty();
+    const bool uses_active_orders =
+        !order_manager_.orders().empty();
 
-        if (uses_active_orders) {
-            while (
-                result.remaining_quantity > 0
-            ) {
-                const LimitOrder* best_match =
-                    nullptr;
+    if (!uses_active_orders) {
+        OrderBook order_book_backup =
+            order_book_;
 
-                for (
-                    const LimitOrder& order :
-                    order_manager_.orders()
-                ) {
-                    const bool opposite_side =
-                        side == OrderSide::Buy
-                            ? order.side ==
-                                OrderSide::Sell
-                            : order.side ==
-                                OrderSide::Buy;
-
-                    if (!opposite_side) {
-                        continue;
-                    }
-
-                    if (best_match == nullptr) {
-                        best_match = &order;
-                        continue;
-                    }
-
-                    const bool better_price =
-                        side == OrderSide::Buy
-                            ? order.price_ticks <
-                                best_match->price_ticks
-                            : order.price_ticks >
-                                best_match->price_ticks;
-
-                    const bool same_price =
-                        order.price_ticks ==
-                        best_match->price_ticks;
-
-                    const bool earlier_sequence =
-                        order.sequence_number <
-                        best_match->sequence_number;
-
-                    if (
-                        better_price ||
-                        (
-                            same_price &&
-                            earlier_sequence
-                        )
-                    ) {
-                        best_match = &order;
-                    }
-                }
-
-                if (best_match == nullptr) {
-                    break;
-                }
-
-                const OrderId resting_order_id =
-                    best_match->order_id;
-
-                LimitOrder* resting_order =
-                    order_manager_.find_order(
-                        resting_order_id
-                    );
-
-                if (resting_order == nullptr) {
-                    throw std::logic_error(
-                        "Selected resting order disappeared."
-                    );
-                }
-
-                const std::int64_t executed_quantity =
-                    std::min(
-                        result.remaining_quantity,
-                        resting_order->remaining_quantity
-                    );
-
-                const std::optional<std::uint64_t>
-                    buy_order_id =
-                        side == OrderSide::Buy
-                            ? std::nullopt
-                            : std::optional<std::uint64_t>{
-                                  resting_order->order_id
-                              };
-
-                const std::optional<std::uint64_t>
-                    sell_order_id =
-                        side == OrderSide::Sell
-                            ? std::nullopt
-                            : std::optional<std::uint64_t>{
-                                  resting_order->order_id
-                              };
-
-                const Trade& recorded_trade =
-                    trade_store_.record_trade(
-                        side,
-                        resting_order->price_ticks,
-                        executed_quantity,
-                        buy_order_id,
-                        sell_order_id
-                    );
-
-                result.trades.push_back(
-                    recorded_trade
-                );
-
-                result.executed_quantity +=
-                    executed_quantity;
-
-                result.remaining_quantity -=
-                    executed_quantity;
-
-                weighted_price_total +=
-                    static_cast<long double>(
-                        resting_order->price_ticks
-                    ) *
-                    static_cast<long double>(
-                        executed_quantity
-                    );
-
-                adjust_order_book(
-                    resting_order->side,
-                    resting_order->price_ticks,
-                    -executed_quantity
-                );
-
-                resting_order->remaining_quantity -=
-                    executed_quantity;
-
-                if (resting_order->is_filled()) {
-                    const bool removed =
-                        order_manager_.cancel_order(
-                            resting_order_id
-                        );
-
-                    if (!removed) {
-                        throw std::logic_error(
-                            "Filled resting order could not "
-                            "be removed."
-                        );
-                    }
-                }
-            }
-        }
-        else {
+        try {
             while (
                 result.remaining_quantity > 0
             ) {
@@ -302,39 +155,219 @@ ExecutionResult MatchingEngine::execute_market_order(
                 }
             }
         }
-
-        if (result.executed_quantity > 0) {
-            const long double average_price =
-                weighted_price_total /
-                static_cast<long double>(
-                    result.executed_quantity
+        catch (...) {
+            order_book_ =
+                std::move(
+                    order_book_backup
                 );
 
-            result.average_price_ticks =
-                static_cast<std::int64_t>(
-                    average_price
-                );
+            trade_store_.rollback(
+                trade_store_checkpoint
+            );
+
+            throw;
         }
-
-        return result;
     }
-    catch (...) {
-        order_book_ =
-            std::move(
-                order_book_backup
+    else {
+        struct OrderMutation {
+            OrderId order_id;
+            OrderSide side;
+            std::int64_t price_ticks;
+            std::int64_t executed_quantity;
+            std::int64_t original_remaining_quantity;
+            bool removed;
+            OrderManager::Removal removal;
+        };
+
+        std::vector<OrderMutation> mutations;
+
+        try {
+            while (
+                result.remaining_quantity > 0
+            ) {
+                const LimitOrder* best_match =
+                    side == OrderSide::Buy
+                        ? order_manager_.best_sell_order()
+                        : order_manager_.best_buy_order();
+
+                if (best_match == nullptr) {
+                    break;
+                }
+
+                const OrderId resting_order_id =
+                    best_match->order_id;
+
+                LimitOrder* resting_order =
+                    order_manager_.find_order(
+                        resting_order_id
+                    );
+
+                if (resting_order == nullptr) {
+                    throw std::logic_error(
+                        "Selected resting order disappeared."
+                    );
+                }
+
+                const std::int64_t executed_quantity =
+                    std::min(
+                        result.remaining_quantity,
+                        resting_order->remaining_quantity
+                    );
+
+                const std::optional<std::uint64_t>
+                    buy_order_id =
+                        side == OrderSide::Buy
+                            ? std::nullopt
+                            : std::optional<std::uint64_t>{
+                                  resting_order->order_id
+                              };
+
+                const std::optional<std::uint64_t>
+                    sell_order_id =
+                        side == OrderSide::Sell
+                            ? std::nullopt
+                            : std::optional<std::uint64_t>{
+                                  resting_order->order_id
+                              };
+
+                mutations.push_back(
+                    OrderMutation{
+                        .order_id =
+                            resting_order->order_id,
+                        .side =
+                            resting_order->side,
+                        .price_ticks =
+                            resting_order->price_ticks,
+                        .executed_quantity =
+                            executed_quantity,
+                        .original_remaining_quantity =
+                            resting_order->remaining_quantity,
+                        .removed = false,
+                        .removal = {}
+                    }
+                );
+
+                OrderMutation& mutation =
+                    mutations.back();
+
+                const Trade& recorded_trade =
+                    trade_store_.record_trade(
+                        side,
+                        resting_order->price_ticks,
+                        executed_quantity,
+                        buy_order_id,
+                        sell_order_id
+                    );
+
+                result.trades.push_back(
+                    recorded_trade
+                );
+
+                result.executed_quantity +=
+                    executed_quantity;
+
+                result.remaining_quantity -=
+                    executed_quantity;
+
+                weighted_price_total +=
+                    static_cast<long double>(
+                        resting_order->price_ticks
+                    ) *
+                    static_cast<long double>(
+                        executed_quantity
+                    );
+
+                adjust_order_book(
+                    resting_order->side,
+                    resting_order->price_ticks,
+                    -executed_quantity
+                );
+
+                resting_order->remaining_quantity -=
+                    executed_quantity;
+
+                if (resting_order->is_filled()) {
+                    const bool removed =
+                        order_manager_.cancel_order(
+                            resting_order_id,
+                            mutation.removal
+                        );
+
+                    if (!removed) {
+                        throw std::logic_error(
+                            "Filled resting order could not "
+                            "be removed."
+                        );
+                    }
+
+                    mutation.removed = true;
+                }
+            }
+        }
+        catch (...) {
+            for (
+                auto iterator =
+                    mutations.rbegin();
+                iterator != mutations.rend();
+                ++iterator
+            ) {
+                OrderMutation& mutation =
+                    *iterator;
+
+                if (mutation.removed) {
+                    mutation.removal.removed_order.remaining_quantity =
+                        mutation.original_remaining_quantity;
+
+                    order_manager_.restore_removal(
+                        mutation.removal
+                    );
+                }
+                else {
+                    LimitOrder* order =
+                        order_manager_.find_order(
+                            mutation.order_id
+                        );
+
+                    if (order == nullptr) {
+                        throw std::logic_error(
+                            "Partially filled order disappeared "
+                            "during rollback."
+                        );
+                    }
+
+                    order->remaining_quantity =
+                        mutation.original_remaining_quantity;
+                }
+
+                adjust_order_book(
+                    mutation.side,
+                    mutation.price_ticks,
+                    mutation.executed_quantity
+                );
+            }
+
+            trade_store_.rollback(
+                trade_store_checkpoint
             );
 
-        order_manager_ =
-            std::move(
-                order_manager_backup
+            throw;
+        }
+    }
+
+    if (result.executed_quantity > 0) {
+        const long double average_price =
+            weighted_price_total /
+            static_cast<long double>(
+                result.executed_quantity
             );
 
-        trade_store_.rollback(
-            trade_store_checkpoint
-        );
-
-        throw;
+        result.average_price_ticks =
+            static_cast<std::int64_t>(
+                average_price
+            );
     }
+
+    return result;
 }
 
 ExecutionResult
@@ -381,12 +414,6 @@ OrderId MatchingEngine::place_limit_order(
 
     std::optional<OrderBook>
         order_book_backup;
-
-    std::optional<OrderManager>
-        order_manager_backup;
-
-    std::optional<TradeStore::Checkpoint>
-        trade_store_checkpoint;
 
     bool non_crossing_book_adjusted =
         false;
@@ -441,34 +468,164 @@ OrderId MatchingEngine::place_limit_order(
             return order_id;
         }
 
-        order_book_backup.emplace(
-            order_book_
-        );
-
-        order_manager_backup.emplace(
-            order_manager_
-        );
-
-        trade_store_checkpoint =
-            trade_store_.checkpoint();
-
-        match_limit_order(
-            incoming_order
-        );
-
-        if (!incoming_order.is_filled()) {
-            order_manager_.add_order(
-                incoming_order
-            );
-
-            adjust_order_book(
-                incoming_order.side,
-                incoming_order.price_ticks,
-                incoming_order.remaining_quantity
+        if (!order_book_backup.has_value()) {
+            order_book_backup.emplace(
+                order_book_
             );
         }
 
-        return order_id;
+        const TradeStore::Checkpoint
+            trade_store_checkpoint =
+                trade_store_.checkpoint();
+
+        struct OrderMutation {
+            OrderId order_id;
+            std::int64_t original_remaining_quantity;
+            bool removed;
+            OrderManager::Removal removal;
+        };
+
+        std::vector<OrderMutation> mutations;
+
+        bool incoming_order_added = false;
+
+        try {
+            while (
+                incoming_order.remaining_quantity > 0
+            ) {
+                const std::optional<OrderId>
+                    best_match_id =
+                        find_best_match(
+                            incoming_order
+                        );
+
+                if (!best_match_id.has_value()) {
+                    break;
+                }
+
+                LimitOrder* resting_order =
+                    order_manager_.find_order(
+                        *best_match_id
+                    );
+
+                if (resting_order == nullptr) {
+                    throw std::logic_error(
+                        "Selected resting order disappeared."
+                    );
+                }
+
+                mutations.push_back(
+                    OrderMutation{
+                        .order_id =
+                            resting_order->order_id,
+                        .original_remaining_quantity =
+                            resting_order->remaining_quantity,
+                        .removed = false,
+                        .removal = {}
+                    }
+                );
+
+                OrderMutation& mutation =
+                    mutations.back();
+
+                const OrderId resting_order_id =
+                    resting_order->order_id;
+
+                execute_limit_trade(
+                    incoming_order,
+                    *resting_order
+                );
+
+                if (resting_order->is_filled()) {
+                    const bool removed =
+                        order_manager_.cancel_order(
+                            resting_order_id,
+                            mutation.removal
+                        );
+
+                    if (!removed) {
+                        throw std::logic_error(
+                            "Filled resting order could not "
+                            "be removed."
+                        );
+                    }
+
+                    mutation.removed = true;
+                }
+            }
+
+            if (!incoming_order.is_filled()) {
+                order_manager_.add_order(
+                    incoming_order
+                );
+
+                incoming_order_added = true;
+
+                adjust_order_book(
+                    incoming_order.side,
+                    incoming_order.price_ticks,
+                    incoming_order.remaining_quantity
+                );
+            }
+
+            return order_id;
+        }
+        catch (...) {
+            if (incoming_order_added) {
+                const bool removed =
+                    order_manager_.cancel_order(
+                        incoming_order.order_id
+                    );
+
+                if (!removed) {
+                    throw std::logic_error(
+                        "Incoming order disappeared "
+                        "during rollback."
+                    );
+                }
+            }
+
+            for (
+                auto iterator =
+                    mutations.rbegin();
+                iterator != mutations.rend();
+                ++iterator
+            ) {
+                OrderMutation& mutation =
+                    *iterator;
+
+                if (mutation.removed) {
+                    mutation.removal.removed_order.remaining_quantity =
+                        mutation.original_remaining_quantity;
+
+                    order_manager_.restore_removal(
+                        mutation.removal
+                    );
+                }
+                else {
+                    LimitOrder* order =
+                        order_manager_.find_order(
+                            mutation.order_id
+                        );
+
+                    if (order == nullptr) {
+                        throw std::logic_error(
+                            "Partially filled order disappeared "
+                            "during rollback."
+                        );
+                    }
+
+                    order->remaining_quantity =
+                        mutation.original_remaining_quantity;
+                }
+            }
+
+            trade_store_.rollback(
+                trade_store_checkpoint
+            );
+
+            throw;
+        }
     }
     catch (...) {
         order_id_generator_ =
@@ -478,19 +635,6 @@ OrderId MatchingEngine::place_limit_order(
 
         next_sequence_number_ =
             sequence_number_backup;
-
-        if (order_manager_backup.has_value()) {
-            order_manager_ =
-                std::move(
-                    *order_manager_backup
-                );
-        }
-
-        if (trade_store_checkpoint.has_value()) {
-            trade_store_.rollback(
-                *trade_store_checkpoint
-            );
-        }
 
         if (order_book_backup.has_value()) {
             order_book_ =
@@ -539,68 +683,23 @@ MatchingEngine::find_best_match(
     const LimitOrder& incoming_order
 ) const noexcept
 {
-    const std::vector<LimitOrder>& orders =
-        order_manager_.orders();
-
     const LimitOrder* best_match =
-        nullptr;
-
-    for (
-        const LimitOrder& order :
-        orders
-    ) {
-        if (
-            order.side ==
-            incoming_order.side
-        ) {
-            continue;
-        }
-
-        const bool prices_cross =
-            incoming_order.side ==
-                OrderSide::Buy
-            ? order.price_ticks <=
-                incoming_order.price_ticks
-            : order.price_ticks >=
-                incoming_order.price_ticks;
-
-        if (!prices_cross) {
-            continue;
-        }
-
-        if (best_match == nullptr) {
-            best_match = &order;
-            continue;
-        }
-
-        const bool has_better_price =
-            incoming_order.side ==
-                OrderSide::Buy
-            ? order.price_ticks <
-                best_match->price_ticks
-            : order.price_ticks >
-                best_match->price_ticks;
-
-        const bool has_same_price =
-            order.price_ticks ==
-            best_match->price_ticks;
-
-        const bool has_earlier_time =
-            order.sequence_number <
-            best_match->sequence_number;
-
-        if (
-            has_better_price ||
-            (
-                has_same_price &&
-                has_earlier_time
-            )
-        ) {
-            best_match = &order;
-        }
-    }
+        incoming_order.side == OrderSide::Buy
+            ? order_manager_.best_sell_order()
+            : order_manager_.best_buy_order();
 
     if (best_match == nullptr) {
+        return std::nullopt;
+    }
+
+    const bool prices_cross =
+        incoming_order.side == OrderSide::Buy
+            ? best_match->price_ticks <=
+                incoming_order.price_ticks
+            : best_match->price_ticks >=
+                incoming_order.price_ticks;
+
+    if (!prices_cross) {
         return std::nullopt;
     }
 
@@ -759,7 +858,7 @@ bool MatchingEngine::modify_order(
         new_quantity
     );
 
-    const LimitOrder* existing_order =
+    LimitOrder* existing_order =
         order_manager_.find_order(
             order_id
         );
@@ -771,20 +870,82 @@ bool MatchingEngine::modify_order(
     const LimitOrder original_order =
         *existing_order;
 
-    LimitOrder modified_order =
-        original_order;
-
     const bool price_changed =
         new_price_ticks !=
-        modified_order.price_ticks;
+        original_order.price_ticks;
 
     const bool quantity_increased =
         new_quantity >
-        modified_order.remaining_quantity;
+        original_order.remaining_quantity;
 
     const bool loses_priority =
         price_changed ||
         quantity_increased;
+
+    if (!price_changed) {
+        const std::int64_t quantity_delta =
+            new_quantity -
+            original_order.remaining_quantity;
+
+        if (quantity_delta != 0) {
+            adjust_order_book(
+                original_order.side,
+                original_order.price_ticks,
+                quantity_delta
+            );
+        }
+
+        if (loses_priority) {
+            try {
+                const bool updated =
+                    order_manager_.update_sequence_number(
+                        order_id,
+                        next_sequence_number_
+                    );
+
+                if (!updated) {
+                    throw std::logic_error(
+                        "Modified order disappeared."
+                    );
+                }
+            }
+            catch (...) {
+                if (quantity_delta != 0) {
+                    adjust_order_book(
+                        original_order.side,
+                        original_order.price_ticks,
+                        -quantity_delta
+                    );
+                }
+
+                throw;
+            }
+
+            ++next_sequence_number_;
+        }
+
+        existing_order =
+            order_manager_.find_order(
+                order_id
+            );
+
+        if (existing_order == nullptr) {
+            throw std::logic_error(
+                "Modified order disappeared."
+            );
+        }
+
+        existing_order->original_quantity =
+            new_quantity;
+
+        existing_order->remaining_quantity =
+            new_quantity;
+
+        return true;
+    }
+
+    LimitOrder modified_order =
+        original_order;
 
     modified_order.price_ticks =
         new_price_ticks;
@@ -795,34 +956,48 @@ bool MatchingEngine::modify_order(
     modified_order.remaining_quantity =
         new_quantity;
 
-    OrderBook order_book_backup =
-        order_book_;
-
     const SequenceNumber
         sequence_number_backup =
             next_sequence_number_;
-
-    OrderManager order_manager_backup =
-        order_manager_;
 
     const TradeStore::Checkpoint
         trade_store_checkpoint =
             trade_store_.checkpoint();
 
+    OrderManager::Removal original_removal;
+
+    bool original_removed = false;
+    bool original_book_adjusted = false;
+    bool modified_order_added = false;
+    bool modified_book_adjusted = false;
+
+    struct OrderMutation {
+        OrderId order_id;
+        OrderSide side;
+        std::int64_t price_ticks;
+        std::int64_t executed_quantity;
+        std::int64_t original_remaining_quantity;
+        bool removed;
+        OrderManager::Removal removal;
+    };
+
+    std::vector<OrderMutation> mutations;
+
     try {
-        if (loses_priority) {
-            modified_order.sequence_number =
-                next_sequence_number_++;
-        }
+        modified_order.sequence_number =
+            next_sequence_number_;
 
         const bool removed =
             order_manager_.cancel_order(
-                order_id
+                order_id,
+                original_removal
             );
 
         if (!removed) {
             return false;
         }
+
+        original_removed = true;
 
         adjust_order_book(
             original_order.side,
@@ -830,37 +1005,184 @@ bool MatchingEngine::modify_order(
             -original_order.remaining_quantity
         );
 
-        match_limit_order(
-            modified_order
-        );
+        original_book_adjusted = true;
+
+        ++next_sequence_number_;
+
+        while (
+            modified_order.remaining_quantity > 0
+        ) {
+            const std::optional<OrderId>
+                best_match_id =
+                    find_best_match(
+                        modified_order
+                    );
+
+            if (!best_match_id.has_value()) {
+                break;
+            }
+
+            LimitOrder* resting_order =
+                order_manager_.find_order(
+                    *best_match_id
+                );
+
+            if (resting_order == nullptr) {
+                throw std::logic_error(
+                    "Selected resting order disappeared."
+                );
+            }
+
+            mutations.push_back(
+                OrderMutation{
+                    .order_id =
+                        resting_order->order_id,
+                    .side =
+                        resting_order->side,
+                    .price_ticks =
+                        resting_order->price_ticks,
+                    .executed_quantity =
+                        std::min(
+                            modified_order.remaining_quantity,
+                            resting_order->remaining_quantity
+                        ),
+                    .original_remaining_quantity =
+                        resting_order->remaining_quantity,
+                    .removed = false,
+                    .removal = {}
+                }
+            );
+
+            OrderMutation& mutation =
+                mutations.back();
+
+            const OrderId resting_order_id =
+                resting_order->order_id;
+
+            execute_limit_trade(
+                modified_order,
+                *resting_order
+            );
+
+            if (resting_order->is_filled()) {
+                const bool resting_removed =
+                    order_manager_.cancel_order(
+                        resting_order_id,
+                        mutation.removal
+                    );
+
+                if (!resting_removed) {
+                    throw std::logic_error(
+                        "Filled resting order could not "
+                        "be removed."
+                    );
+                }
+
+                mutation.removed = true;
+            }
+        }
 
         if (!modified_order.is_filled()) {
             order_manager_.add_order(
                 modified_order
             );
 
+            modified_order_added = true;
+
             adjust_order_book(
                 modified_order.side,
                 modified_order.price_ticks,
                 modified_order.remaining_quantity
             );
+
+            modified_book_adjusted = true;
         }
 
         return true;
     }
     catch (...) {
-        order_book_ =
-            std::move(
-                order_book_backup
+        if (modified_book_adjusted) {
+            adjust_order_book(
+                modified_order.side,
+                modified_order.price_ticks,
+                -modified_order.remaining_quantity
             );
+        }
+
+        if (modified_order_added) {
+            const bool removed =
+                order_manager_.cancel_order(
+                    modified_order.order_id
+                );
+
+            if (!removed) {
+                throw std::logic_error(
+                    "Modified order disappeared "
+                    "during rollback."
+                );
+            }
+        }
+
+        for (
+            auto iterator =
+                mutations.rbegin();
+            iterator != mutations.rend();
+            ++iterator
+        ) {
+            OrderMutation& mutation =
+                *iterator;
+
+            if (mutation.removed) {
+                mutation.removal.removed_order.remaining_quantity =
+                    mutation.original_remaining_quantity;
+
+                order_manager_.restore_removal(
+                    mutation.removal
+                );
+            }
+            else {
+                LimitOrder* order =
+                    order_manager_.find_order(
+                        mutation.order_id
+                    );
+
+                if (order == nullptr) {
+                    throw std::logic_error(
+                        "Partially filled order disappeared "
+                        "during rollback."
+                    );
+                }
+
+                order->remaining_quantity =
+                    mutation.original_remaining_quantity;
+            }
+
+            adjust_order_book(
+                mutation.side,
+                mutation.price_ticks,
+                mutation.executed_quantity
+            );
+        }
+
+        if (original_book_adjusted) {
+            adjust_order_book(
+                original_order.side,
+                original_order.price_ticks,
+                original_order.remaining_quantity
+            );
+        }
+
+        if (original_removed) {
+            original_removal.removed_order =
+                original_order;
+
+            order_manager_.restore_removal(
+                original_removal
+            );
+        }
 
         next_sequence_number_ =
             sequence_number_backup;
-
-        order_manager_ =
-            std::move(
-                order_manager_backup
-            );
 
         trade_store_.rollback(
             trade_store_checkpoint

@@ -17,6 +17,7 @@ using Clock = std::chrono::steady_clock;
 
 constexpr std::int64_t kQuantity = 10;
 constexpr std::int64_t kBaseBidPrice = 1'000'000;
+constexpr std::int64_t kAlternateBidPrice = 999'999;
 constexpr std::int64_t kBaseAskPrice = 2'000'000;
 
 constexpr std::size_t kMeasuredIterations = 1'000;
@@ -498,6 +499,90 @@ LatencyStatistics benchmark_modify_order(
     );
 }
 
+LatencyStatistics benchmark_modify_price(
+    std::size_t book_size
+)
+{
+    OrderBook order_book;
+    MatchingEngine engine(order_book);
+
+    populate_buy_orders(
+        engine,
+        book_size
+    );
+
+    const auto& initial_orders =
+        engine.active_limit_orders();
+
+    const OrderId target_order_id =
+        initial_orders[
+            initial_orders.size() / 2
+        ].order_id;
+
+    std::int64_t current_price =
+        kBaseBidPrice;
+
+    for (
+        std::size_t i = 0;
+        i < kWarmupIterations;
+        ++i
+    ) {
+        const std::int64_t new_price =
+            current_price == kBaseBidPrice
+                ? kAlternateBidPrice
+                : kBaseBidPrice;
+
+        const bool modified =
+            engine.modify_order(
+                target_order_id,
+                new_price,
+                kQuantity
+            );
+
+        (void)modified;
+
+        current_price =
+            new_price;
+    }
+
+    std::vector<std::int64_t> samples;
+    samples.reserve(kMeasuredIterations);
+
+    for (
+        std::size_t i = 0;
+        i < kMeasuredIterations;
+        ++i
+    ) {
+        const std::int64_t new_price =
+            current_price == kBaseBidPrice
+                ? kAlternateBidPrice
+                : kBaseBidPrice;
+
+        const auto latency =
+            measure_latency_ns(
+                [&]() {
+                    const bool modified =
+                        engine.modify_order(
+                            target_order_id,
+                            new_price,
+                            kQuantity
+                        );
+
+                    (void)modified;
+                }
+            );
+
+        samples.push_back(latency);
+
+        current_price =
+            new_price;
+    }
+
+    return calculate_statistics(
+        std::move(samples)
+    );
+}
+
 LatencyStatistics benchmark_multi_level_match(
     std::size_t book_size
 )
@@ -591,6 +676,12 @@ void run_book_size(
         "Modify order",
         book_size,
         benchmark_modify_order(book_size)
+    );
+
+    print_statistics(
+        "Modify price",
+        book_size,
+        benchmark_modify_price(book_size)
     );
 
     print_statistics(

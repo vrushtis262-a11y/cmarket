@@ -727,3 +727,335 @@ TEST(OrderManagerTest, CanReuseCancelledOrderId)
     EXPECT_EQ(order->side, OrderSide::Sell);
     EXPECT_EQ(order->price_ticks, 530'000);
 }
+TEST(OrderManagerTest, ReturnsBestBuyByHighestPrice)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Buy,
+            525'000,
+            100,
+            2
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Buy,
+            515'000,
+            100,
+            3
+        )
+    );
+
+    const LimitOrder* best =
+        manager.best_buy_order();
+
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->order_id, 2U);
+    EXPECT_EQ(best->price_ticks, 525'000);
+}
+
+TEST(OrderManagerTest, ReturnsBestSellByLowestPrice)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Sell,
+            530'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Sell,
+            525'000,
+            100,
+            2
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Sell,
+            535'000,
+            100,
+            3
+        )
+    );
+
+    const LimitOrder* best =
+        manager.best_sell_order();
+
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->order_id, 2U);
+    EXPECT_EQ(best->price_ticks, 525'000);
+}
+
+TEST(OrderManagerTest, BestBuyUsesFifoAtSamePrice)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            3
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Buy,
+            520'000,
+            100,
+            2
+        )
+    );
+
+    const LimitOrder* best =
+        manager.best_buy_order();
+
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->order_id, 2U);
+    EXPECT_EQ(best->sequence_number, 1U);
+}
+
+TEST(OrderManagerTest, BestSellUsesFifoAtSamePrice)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Sell,
+            530'000,
+            100,
+            3
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Sell,
+            530'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            3,
+            OrderSide::Sell,
+            530'000,
+            100,
+            2
+        )
+    );
+
+    const LimitOrder* best =
+        manager.best_sell_order();
+
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->order_id, 2U);
+    EXPECT_EQ(best->sequence_number, 1U);
+}
+
+TEST(OrderManagerTest, BestOrdersIgnoreOppositeSide)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Sell,
+            510'000,
+            100,
+            2
+        )
+    );
+
+    const LimitOrder* best_buy =
+        manager.best_buy_order();
+
+    const LimitOrder* best_sell =
+        manager.best_sell_order();
+
+    ASSERT_NE(best_buy, nullptr);
+    ASSERT_NE(best_sell, nullptr);
+
+    EXPECT_EQ(best_buy->order_id, 1U);
+    EXPECT_EQ(best_sell->order_id, 2U);
+}
+
+TEST(OrderManagerTest, BestOrdersReturnNullWhenSideIsEmpty)
+{
+    OrderManager manager;
+
+    EXPECT_EQ(
+        manager.best_buy_order(),
+        nullptr
+    );
+
+    EXPECT_EQ(
+        manager.best_sell_order(),
+        nullptr
+    );
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Buy,
+            520'000,
+            100,
+            1
+        )
+    );
+
+    EXPECT_NE(
+        manager.best_buy_order(),
+        nullptr
+    );
+
+    EXPECT_EQ(
+        manager.best_sell_order(),
+        nullptr
+    );
+}
+
+TEST(OrderManagerTest, BestOrderAdvancesAfterCancellation)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Sell,
+            525'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Sell,
+            525'000,
+            100,
+            2
+        )
+    );
+
+    ASSERT_TRUE(
+        manager.cancel_order(1)
+    );
+
+    const LimitOrder* best =
+        manager.best_sell_order();
+
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->order_id, 2U);
+    EXPECT_EQ(best->sequence_number, 2U);
+}
+
+TEST(OrderManagerTest, UpdatesSequencePriority)
+{
+    OrderManager manager;
+
+    manager.add_order(
+        make_order(
+            1,
+            OrderSide::Sell,
+            525'000,
+            100,
+            1
+        )
+    );
+
+    manager.add_order(
+        make_order(
+            2,
+            OrderSide::Sell,
+            525'000,
+            100,
+            2
+        )
+    );
+
+    ASSERT_TRUE(
+        manager.update_sequence_number(
+            1,
+            3
+        )
+    );
+
+    const LimitOrder* first =
+        manager.find_order(1);
+
+    ASSERT_NE(first, nullptr);
+
+    EXPECT_EQ(
+        first->sequence_number,
+        3U
+    );
+
+    const LimitOrder* best =
+        manager.best_sell_order();
+
+    ASSERT_NE(best, nullptr);
+
+    EXPECT_EQ(
+        best->order_id,
+        2U
+    );
+
+    EXPECT_EQ(
+        best->sequence_number,
+        2U
+    );
+}
