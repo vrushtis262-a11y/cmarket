@@ -1,6 +1,6 @@
 # CMarket
 
-CMarket is a modern C++20 exchange-style matching engine implementing market orders, limit orders, automatic matching, price-time priority, multi-level execution, partial fills, persistent trade history, input validation, exception-safety testing, randomized testing, fuzz testing, and sanitizer-assisted robustness validation.
+CMarket is a modern C++20 exchange-style matching engine implementing market orders, limit orders, automatic price-time-priority matching, multi-level execution, partial fills, indexed active-order management, persistent trade history, transactional rollback, synchronized order-book access, performance benchmarking, randomized testing, fuzz testing, and sanitizer-assisted robustness validation.
 
 ---
 
@@ -122,18 +122,21 @@ Each individual execution is persisted as its own trade record.
 
 ## Architecture
 
-CMarket separates matching orchestration, active-order lifecycle, price-level state, and trade persistence.
+CMarket separates matching orchestration, active-order lifecycle, aggregated price-level state, and trade persistence.
 
 ```text
-                    MatchingEngine
-                         |
-          +--------------+--------------+
-          |              |              |
-          v              v              v
-     OrderBook      OrderManager     TradeStore
-          |              |              |
-          v              v              v
-   bids / asks      active orders   executed trades
+                         MatchingEngine
+                              |
+             +----------------+----------------+
+             |                |                |
+             v                v                v
+       OrderManager       OrderBook        TradeStore
+             |                |                |
+             v                v                v
+      active orders      price levels     trade history
+      OrderId index      shared_mutex     checkpoints
+      buy priority
+      sell priority
 ```
 
 ### MatchingEngine
@@ -145,13 +148,13 @@ Its responsibilities include:
 - Receiving market and limit orders
 - Validating order parameters
 - Assigning Order IDs and FIFO sequence numbers
-- Finding eligible matches
+- Finding eligible matches through price-time priority indexes
 - Coordinating partial and full fills
 - Coordinating cancellation and modification
 - Synchronizing active orders with the `OrderBook`
 - Recording executions through `TradeStore`
-- Preserving engine invariants across rejected operations
-- Maintaining valid state across failed operations
+- Using targeted mutation journals for rollback-sensitive hot paths
+- Preserving engine invariants across rejected and failed operations
 
 ### OrderBook
 
@@ -159,28 +162,42 @@ Its responsibilities include:
 
 Its responsibilities include:
 
-- Bid levels
-- Ask levels
+- Bid and ask levels
 - Best bid and best ask
 - Spread
 - Mid-price
 - VWAP
 - Microprice
-- Order book imbalance
-- Price-level updates
-- Aggregated depth
+- Order-book imbalance
+- Market depth
+- Incremental price-level updates
+- Aggregated price-level quantities
+- Shared/exclusive synchronization through `std::shared_mutex`
+
+Read-only operations use shared locking while mutations use exclusive locking.
+
+This synchronization protects `OrderBook` state itself. It does not make the entire `MatchingEngine` a fully concurrent multi-writer matching engine.
 
 ### OrderManager
 
 `OrderManager` owns active limit orders and their lifecycle.
 
+The active-order vector remains authoritative while secondary indexes provide efficient lookup and price-time priority.
+
 Its responsibilities include:
 
 - Adding active orders
-- Looking up orders by `OrderId`
+- Expected O(1) lookup by `OrderId` through an unordered index
+- Maintaining separate buy and sell price-time priority indexes
+- Selecting the highest-priority resting order without a full vector scan
 - Removing cancelled or fully filled orders
+- Maintaining index correctness after swap-with-back cancellation
+- Updating priority after sequence-number changes
+- Supporting transactional removal and restoration for rollback
 - Providing read-only access to the active-order collection
 - Rejecting invalid active-order state
+
+FIFO execution priority is determined by sequence number rather than physical vector position.
 
 ### TradeStore
 
@@ -194,9 +211,10 @@ Its responsibilities include:
 - Assigning monotonically increasing execution sequence numbers
 - Preserving buy and sell Order IDs when available
 - Returning trade history
+- Providing lightweight checkpoints for rollback
 - Clearing stored history without reusing IDs or sequence numbers
 
-This separation keeps matching orchestration independent from active-order ownership and trade persistence.
+The full architecture, including rollback paths, ownership, invariants, complexity characteristics, and concurrency scope, is documented in `docs/architecture.md`.
 
 ---
 
@@ -831,6 +849,7 @@ include/
     order_id_generator.hpp
     order_manager.hpp
     trade_store.hpp
+    validation.hpp
     websocket_client.hpp
 
 src/
@@ -855,6 +874,21 @@ tests/
     randomized_matching_tests.cpp
     trade_persistence_tests.cpp
     trade_store_tests.cpp
+
+benchmarks/
+    baseline_benchmark.cpp
+    latency_benchmark.cpp
+    throughput_benchmark.cpp
+    results/
+        final_performance_results.txt
+        pre_index_performance_results.txt
+
+docs/
+    architecture.md
+
+.github/
+    workflows/
+        ci.yml
 
 CMakeLists.txt
 README.md
@@ -1208,82 +1242,127 @@ The robustness milestone is designed around several principles:
 
 ---
 
+## Performance
+
+CMarket includes dedicated latency and throughput benchmarks for the matching-engine hot paths.
+
+The current benchmark report is stored at:
+
+```text
+benchmarks/results/final_performance_results.txt
+```
+
+The earlier pre-index optimization checkpoint is preserved at:
+
+```text
+benchmarks/results/pre_index_performance_results.txt
+```
+
+The final measurements were collected on an Apple M1 MacBook Pro using Apple clang 21 and CMake 4.4.0 in a Release build.
+
+### Throughput
+
+```text
+Order placement:        2,882,010 ops/sec
+Heavy matching:         3,819,242 ops/sec
+Place/cancel:           4,564,708 ops/sec
+Place/modify:           4,915,545 ops/sec
+Mixed workload:         5,252,342 ops/sec
+```
+
+### 100k-Order Latency
+
+Median latency for representative operations on a 100,000-order active book:
+
+```text
+Limit placement:              209 ns
+Market match:                 292 ns
+Cancellation:                 209 ns
+Same-price modification:       42 ns
+Price-changing modification:  417 ns
+Multi-level execution:      2,291 ns
+```
+
+The largest performance improvements came from replacing repeated linear scans and full-state snapshots on hot paths with:
+
+- An `OrderId` lookup index
+- Dedicated buy and sell price-time priority indexes
+- Swap-with-back active-order removal
+- Same-price modification fast paths
+- Transactional extraction and restoration
+- Targeted mutation journals
+- Lightweight `TradeStore` checkpoints
+
+These measurements are comparative engineering benchmarks from the documented local environment. They are not hard real-time latency guarantees.
+
+---
+
 ## Current Status
 
-The current matching-engine robustness milestone includes:
+CMarket currently includes:
 
-- Multi-level automatic matching
-- Robust partial-fill behavior
+- Market and limit order execution
+- Automatic crossing of compatible limit orders
+- Multi-level matching and partial fills
 - Price-time priority
-- Persistent trade history
-- Modular matching architecture
-- Dedicated active-order management
-- Dedicated trade persistence
-- Invalid-input validation
+- Indexed active-order lookup by `OrderId`
+- Dedicated buy and sell priority indexes
+- FIFO sequence preservation independent of vector position
+- Swap-with-back active-order removal
+- Fast-path same-price modification
+- Transactional price-changing modification
+- Transactional crossing-limit execution
+- Transactional active-order market execution
+- Targeted mutation journals for rollback
+- `TradeStore` checkpoints
+- Shared/exclusive `OrderBook` synchronization
+- Explicit `OrderBook` copy semantics for rollback compatibility
+- Input validation and invariant testing
 - Exception-safety testing
-- Order-book exception-safety testing
-- Overflow protection
-- Failed-operation state preservation
-- Randomized stress testing
-- Fixed-seed reproducibility
-- Portable fuzz-testing harness
-- Optional native libFuzzer integration
-- Automatic libFuzzer capability detection
-- Graceful standalone fallback when libFuzzer is unavailable
-- Engine-invariant testing
-- Full automated regression suite
-- AddressSanitizer validation
-- UndefinedBehaviorSanitizer validation
-- Strict compiler-warning configuration
-- Modern C++20
-- CMake build system
+- Randomized matching tests
+- Fuzz testing
+- Sanitizer-assisted validation
+- Latency and throughput benchmarks
+- GitHub Actions CI
+
+The post-optimization full test suite contains 172 tests. All 172 passed during final Day 2 validation.
 
 ---
 
 ## Future Improvements
 
-- Larger fuzz corpora
-- Longer-duration fuzz campaigns
-- Native libFuzzer campaigns on supported LLVM toolchains
+Potential future work includes:
+
+- Larger and persistent fuzz corpora
+- Longer-running fuzz campaigns
+- Native libFuzzer integration
 - Automated fuzzing in CI
-- Property-based testing framework integration
-- Performance benchmarking
-- Iceberg orders
-- Stop orders
-- Fill-or-Kill orders
-- Immediate-or-Cancel orders
-- Multithreaded matching
-- Persistent on-disk order and trade storage
+- Additional property-based testing
+- Profiling and benchmarking on Linux and additional CPU architectures
+- Repeated benchmark runs and longer-duration workload measurements
+- Additional order types such as iceberg, stop, FOK, and IOC
+- Full matching-engine multithreading and concurrency design
+- Durable on-disk persistence
 
 ---
 
 ## Release Readiness
 
-The robustness milestone targets the following release criteria:
+The next release milestone builds on the `v1.2.0` robustness release with performance-focused matching-engine changes and synchronized `OrderBook` access.
 
-```text
-Invalid inputs handled predictably
-Exception-safe engine operations
-Engine invariants explicitly tested
-Randomized stress coverage
-Fixed-seed reproducibility
-Portable fuzz-testing harness
-Optional libFuzzer integration
-Graceful fallback when libFuzzer is unavailable
-Regression failures preserved as tests
-Full deterministic suite passing
-AddressSanitizer passing
-UndefinedBehaviorSanitizer passing
-Strict compiler warnings enabled
-CI green
-Documentation updated
-```
+Release validation should include:
 
-Local robustness validation includes the full deterministic and randomized regression suite, portable fuzz execution, AddressSanitizer, UndefinedBehaviorSanitizer, and strict project compiler warnings.
+- Release build succeeds
+- Full test suite passes
+- Sanitizer build succeeds
+- Sanitizer test suite passes
+- Benchmark documentation matches the measured results
+- README and architecture documentation match the implementation
+- GitHub Actions CI is green
 
-Native libFuzzer execution depends on the active Clang toolchain providing the required libFuzzer runtime. When that runtime is unavailable, the portable fuzz harness remains available.
+`OrderBook` synchronization protects order-book operations but does not imply that the entire matching engine is fully concurrent.
 
-Once the final repository state is committed, pushed, and CI is green, the project is ready for the `v1.2.0` robustness release.
+After final local validation, commit and push, and a green CI run, this repository state can be considered for the next release milestone.
 
 ---
 

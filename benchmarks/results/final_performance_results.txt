@@ -1,246 +1,370 @@
 cmarket Final Performance Results
 =================================
 
+Benchmark Date
+--------------
+September 16, 2026
+
 Benchmark Environment
 ---------------------
-Build type: Release
+Machine: MacBook Pro (MacBookPro17,1)
+Processor: Apple M1
+CPU cores: 8 (4 performance, 4 efficiency)
+Memory: 8 GB
 
+Operating system:
+macOS 26.3.1
+Build 25D2128
+
+Compiler:
+Apple clang 21.0.0
+Target: arm64-apple-darwin25.3.0
+
+CMake:
+4.4.0
+
+Build type:
+Release
+
+These measurements were collected on a general-purpose operating
+system and represent observed performance on this specific machine and
+build configuration. They are not deterministic latency guarantees.
+
+Benchmark Workloads
+-------------------
 Throughput workloads:
 - 100,000 operations per workload
 - 100,000 initial active orders where applicable
-- Three measured runs
-- Results reported as three-run averages
 
 Latency workloads:
-- 1,000 measured iterations per operation
-- 100 warmup iterations per operation
 - Book sizes: 100, 1,000, 10,000, and 100,000 active orders
-- Three measured runs
-- Final summary emphasizes p50, p95, and p99 latency
+- Measurements include p50, p95, p99, and worst observed latency
 
 Final Throughput Results
 ------------------------
-Three-run average:
+Workload                        Operations         Seconds           Ops/sec
+----------------------------------------------------------------------------
+Order placement                     100000           0.035           2882010
+Heavy matching                      100000           0.026           3819242
+Place/cancel mix                    100000           0.022           4564708
+Place/modify mix                    100000           0.020           4915545
+Mixed workload                      100000           0.019           5252342
 
-Order placement:   41,604 ops/sec
-Heavy matching:     8,437 ops/sec
-Place/cancel mix:  20,791 ops/sec
-Place/modify mix:   5,861 ops/sec
-Mixed workload:     8,882 ops/sec
+Final Latency Results
+---------------------
+Operation                Book size        p50 (ns)        p95 (ns)        p99 (ns)      Worst (ns)
+--------------------------------------------------------------------------------------------------
+Place order                    100             167             167             208             209
+Match order                    100             250             292             333           12625
+Cancel order                   100              83             125             125             125
+Modify order                   100              42              42              84             167
+Modify price                   100             250             291             292             375
+Multi-level match              100            1625            2708            4833           79625
 
-Throughput Run Details
+Place order                   1000             167             208             250             292
+Match order                   1000             250             333             458           11125
+Cancel order                  1000             125             125             208             250
+Modify order                  1000              42              42              84             125
+Modify price                  1000             417             750             834            7666
+Multi-level match             1000            3500            5875           38542           58042
+
+Place order                  10000             333             375             500             542
+Match order                  10000             459             542             584            4750
+Cancel order                 10000             333             375             375             417
+Modify order                10000              83              84              84             208
+Modify price                10000             583             625             625            1208
+Multi-level match           10000            2500            2583            4042           62709
+
+Place order                 100000             209             250             250             250
+Match order                 100000             292             334             500            4750
+Cancel order                100000             209             250             250             292
+Modify order                100000              42              42              42              42
+Modify price                100000             417             459             459             542
+Multi-level match           100000            2291            2375            2542           15000
+
+Performance Comparison
 ----------------------
-Run 1:
-Order placement:   42,068 ops/sec
-Heavy matching:     8,475 ops/sec
-Place/cancel mix:  21,074 ops/sec
-Place/modify mix:   5,968 ops/sec
-Mixed workload:     8,979 ops/sec
+The original Day 2 throughput baseline was:
 
-Run 2:
-Order placement:   41,622 ops/sec
-Heavy matching:     8,401 ops/sec
-Place/cancel mix:  20,614 ops/sec
-Place/modify mix:   5,849 ops/sec
-Mixed workload:     8,844 ops/sec
+Order placement:   40,451 ops/sec
+Heavy matching:     7,650 ops/sec
+Place/cancel mix:  19,744 ops/sec
+Place/modify mix:   5,597 ops/sec
+Mixed workload:     8,678 ops/sec
 
-Run 3:
-Order placement:   41,121 ops/sec
-Heavy matching:     8,435 ops/sec
-Place/cancel mix:  20,685 ops/sec
-Place/modify mix:   5,766 ops/sec
-Mixed workload:     8,824 ops/sec
+Final throughput compared with the original Day 2 baseline:
 
-Comparison With Original Profiling Baseline
--------------------------------------------
-Original profiling baseline:
+Order placement:
+40,451 -> 2,882,010 ops/sec
+Approximately 71x higher throughput.
 
-Order placement:   40,640 ops/sec
-Heavy matching:     3,839 ops/sec
-Place/cancel mix:   8,868 ops/sec
-Place/modify mix:   4,937 ops/sec
-Mixed workload:     5,611 ops/sec
+Heavy matching:
+7,650 -> 3,819,242 ops/sec
+Approximately 499x higher throughput.
 
-Final comparison:
+Place/cancel mix:
+19,744 -> 4,564,708 ops/sec
+Approximately 231x higher throughput.
 
-Order placement:   40,640 -> 41,604 ops/sec    (+2.4%)
-Heavy matching:     3,839 ->  8,437 ops/sec  (+119.8%)
-Place/cancel mix:   8,868 -> 20,791 ops/sec  (+134.4%)
-Place/modify mix:   4,937 ->  5,861 ops/sec   (+18.7%)
-Mixed workload:     5,611 ->  8,882 ops/sec   (+58.3%)
+Place/modify mix:
+5,597 -> 4,915,545 ops/sec
+Approximately 878x higher throughput.
 
-Latency Results at 100,000 Active Orders
-----------------------------------------
-Three-run average:
+Mixed workload:
+8,678 -> 5,252,342 ops/sec
+Approximately 605x higher throughput.
 
-Operation              p50          p95          p99
---------------------------------------------------------
-Place order          47.7 us      49.7 us      58.6 us
-Match order         189.5 us     203.3 us     262.6 us
-Cancel order         47.8 us      50.7 us      61.7 us
-Modify order        219.1 us     233.1 us     255.5 us
-Multi-level match     1.994 ms      2.073 ms      2.149 ms
+Major Latency Improvements
+--------------------------
+Market-order matching:
 
-Latency Run Details at 100,000 Active Orders
---------------------------------------------
-Run 1:
+Before priority indexing:
+57,357.21 ns/op
+
+After priority indexing:
+219.32 ns/op
+
+This represents approximately a 261x reduction in average benchmark
+operation time for the benchmarked market-buy workload.
+
+Compared with the original Day 2 market-buy benchmark:
+
+111,536.56 ns/op -> 219.32 ns/op
+
+This represents approximately a 508x reduction.
+
+Crossing limit-order matching at a 100,000-order book:
+
+Before transactional crossing-limit rollback:
+13,889,958 ns p50
+
+After transactional crossing-limit rollback:
+291 ns p50
+
+This represents approximately a 47,732x reduction in observed p50
+latency for that benchmark scenario.
+
+Price-changing modification at a 100,000-order book:
+
+Before transactional price-change rollback:
+14,933,333 ns p50
+
+After transactional price-change rollback:
+417 ns p50
+
+This represents approximately a 35,812x reduction in observed p50
+latency for that benchmark scenario.
+
+Performance Architecture
+------------------------
+The final performance state reflects several cumulative changes.
+
+1. Indexed Order Lookup
+
+OrderManager maintains an unordered index from OrderId to active-order
+storage position.
+
+This removes repeated linear scans for operations such as cancellation,
+modification, and direct OrderId lookup.
+
+2. Price-Time Priority Indexes
+
+OrderManager maintains separate ordered priority indexes for buy and
+sell orders.
+
+Buy priority is ordered by:
+- Higher price first
+- Lower sequence number first
+- Lower OrderId as a deterministic tie-breaker
+
+Sell priority is ordered by:
+- Lower price first
+- Lower sequence number first
+- Lower OrderId as a deterministic tie-breaker
+
+These indexes allow the matching engine to locate the highest-priority
+resting order without scanning every active order.
+
+3. Observable Active-Order Storage
+
+The active-order vector remains the authoritative storage container.
+
+Cancellation retains swap-with-back behavior.
+
+FIFO execution priority does not depend on physical vector position.
+It is determined by price and sequence number through the priority
+indexes.
+
+4. Transactional Mutation Journals
+
+Hot matching paths avoid copying the complete OrderManager for
+rollback.
+
+Instead, operations record targeted mutations and restore them in
+reverse order if an operation fails.
+
+This approach is used by:
+- Active-order market execution
+- Crossing limit-order placement
+- Price-changing modification
+
+5. Transactional Order Removal
+
+OrderManager supports extracting an order together with the index
+state required to restore it.
+
+This allows filled or temporarily removed orders to be restored without
+rebuilding the complete active-order manager.
+
+6. Same-Price Modification Fast Path
+
+Same-price modifications avoid rebuilding or copying full matching
+state.
+
+A quantity decrease preserves FIFO priority.
+
+A quantity increase receives a new sequence number and therefore loses
+its previous FIFO priority.
+
+7. Lightweight Trade Rollback
+
+TradeStore uses checkpoints so failed matching operations can restore
+trade-history state without copying the entire trade vector.
+
+8. OrderBook Synchronization
+
+OrderBook uses shared/exclusive synchronization.
+
+Read-only access uses shared locking while mutating operations use
+exclusive locking.
+
+Explicit copy operations preserve the snapshot behavior required by
+remaining rollback paths.
+
+Scaling Interpretation
+----------------------
+The final latency measurements remain comparatively flat as the active
+order count grows from 100 to 100,000 for the primary indexed
+operations.
+
+At 100,000 active orders:
 
 Place order:
-p50:    48,125 ns
-p95:    49,791 ns
-p99:    55,833 ns
-worst:  75,708 ns
+209 ns p50
 
 Match order:
-p50:   186,792 ns
-p95:   191,208 ns
-p99:   199,709 ns
-worst: 331,708 ns
+292 ns p50
 
 Cancel order:
-p50:    47,833 ns
-p95:    47,959 ns
-p99:    51,625 ns
-worst:  73,458 ns
+209 ns p50
 
-Modify order:
-p50:   219,084 ns
-p95:   232,500 ns
-p99:   245,334 ns
-worst: 267,500 ns
+Same-price modify:
+42 ns p50
 
-Multi-level match:
-p50: 1,995,250 ns
-p95: 2,062,750 ns
-p99: 2,110,792 ns
-worst: 3,150,333 ns
+Price-changing modify:
+417 ns p50
 
-Run 2:
+The multi-level benchmark performs more work per operation because it
+executes across multiple resting price levels. Its 100,000-order p50
+was 2,291 ns.
 
-Place order:
-p50:    46,959 ns
-p95:    48,459 ns
-p99:    55,958 ns
-worst:  75,583 ns
+These results demonstrate that the previous full-container scans and
+full OrderManager rollback snapshots were removed from the measured
+hot paths.
 
-Match order:
-p50:   194,750 ns
-p95:   221,375 ns
-p99:   379,958 ns
-worst: 713,292 ns
+Complexity Notes
+----------------
+The indexed architecture changes the dominant lookup behavior of
+several operations.
 
-Cancel order:
-p50:    47,833 ns
-p95:    49,458 ns
-p99:    57,875 ns
-worst:  76,708 ns
+OrderId lookup:
+Expected O(1) through the unordered index.
 
-Modify order:
-p50:   218,208 ns
-p95:   222,125 ns
-p99:   226,042 ns
-worst: 244,208 ns
+Best resting order lookup:
+O(1) access to the beginning of the corresponding ordered priority
+index after index maintenance.
 
-Multi-level match:
-p50: 1,989,083 ns
-p95: 2,024,084 ns
-p99: 2,080,542 ns
-worst: 2,352,583 ns
+Priority-index insertion/removal:
+O(log n).
 
-Run 3:
+Active-order cancellation:
+Expected O(1) vector/index lookup work plus O(log n) priority-index
+maintenance.
 
-Place order:
-p50:    47,875 ns
-p95:    50,750 ns
-p99:    64,000 ns
-worst: 156,541 ns
+Matching:
+No full active-order scan is required to discover each next resting
+match. Each matched order still requires the corresponding state,
+priority-index, order-book, and trade updates.
 
-Match order:
-p50:   186,958 ns
-p95:   197,458 ns
-p99:   208,041 ns
-worst: 273,750 ns
+Benchmark Interpretation
+------------------------
+These measurements should be interpreted as comparative engineering
+results rather than hard real-time guarantees.
 
-Cancel order:
-p50:    47,834 ns
-p95:    54,584 ns
-p99:    75,667 ns
-worst: 140,667 ns
+The benchmarks run on macOS on a general-purpose Apple M1 system.
+Scheduler activity, CPU frequency behavior, thermal conditions,
+background processes, compiler version, build flags, and machine
+configuration can affect observed values.
 
-Modify order:
-p50:   220,000 ns
-p95:   244,667 ns
-p99:   295,125 ns
-worst: 441,375 ns
+Worst observed latency is especially sensitive to operating-system
+noise. p50, p95, and p99 are therefore more useful for comparing
+implementation changes.
 
-Multi-level match:
-p50: 1,998,541 ns
-p95: 2,133,334 ns
-p99: 2,256,000 ns
-worst: 2,622,000 ns
+The largest speedups also compare implementations with different
+algorithmic behavior. They demonstrate removal of previously measured
+hotspots rather than guaranteeing the same multiplier for arbitrary
+production workloads.
 
-Interpretation
---------------
-Throughput results are stable across the three measured runs.
+Correctness State
+-----------------
+All performance changes preserve the matching-engine correctness suite.
 
-The largest improvement relative to the original profiling baseline is
-the place/cancel workload, which improved by approximately 134%.
+Final deterministic test state:
 
-Heavy matching throughput improved by approximately 120%.
+172 / 172 tests passed.
 
-Mixed workload throughput improved by approximately 58%.
+The suite includes coverage for:
+- Order-book behavior
+- Market and limit execution
+- Partial and full fills
+- Price-time priority
+- FIFO behavior after swap-with-back cancellation
+- Cancellation
+- Same-price modification
+- Price-changing modification
+- OrderId indexing
+- Buy and sell priority indexes
+- Priority updates after sequence changes
+- Trade persistence
+- Exception safety
+- Rollback behavior
+- Randomized invariants
+- Fuzz-harness integration
 
-At 100,000 active orders, placement and cancellation both remain below
-approximately 50 microseconds at p50.
+Historical Results
+------------------
+The previous performance checkpoint is preserved at:
 
-Single-order matching remains below approximately 190 microseconds at
-p50.
+benchmarks/results/pre_index_performance_results.txt
 
-Modify latency remains approximately 219 microseconds at p50.
-
-A 10-level market match across a 100,000-order book requires
-approximately 2.0 milliseconds at p50.
-
-Worst-case latency is intentionally not treated as a deterministic
-engine bound. The benchmark runs on a general-purpose operating system,
-and maximum observed latency is sensitive to scheduler activity and
-other system noise. p50, p95, and p99 are therefore the primary latency
-metrics.
-
-Performance Evolution
----------------------
-The final results reflect the cumulative retained performance work:
-
-- Profiling identified vector movement and rollback copying as major
-  hotspots.
-- TradeStore rollback copies were replaced with lightweight
-  checkpoints.
-- Cancellation rollback was reduced from full-state copies to targeted
-  restoration.
-- Non-crossing placement avoided unnecessary full OrderBook backups.
-- Active-order cancellation was changed from stable vector erase to
-  swap-with-back removal.
-- FIFO execution semantics were preserved by price and sequence number
-  rather than physical vector position.
-
-Remaining Bottlenecks
----------------------
-Order lookup still performs a linear scan through active orders.
-
-Best-match discovery also scans active orders.
-
-Modify and multi-step matching paths still retain substantial rollback
-and state-management costs.
-
-The current results therefore establish a strong final Week 3 baseline
-while also identifying clear future optimization opportunities.
+That result represents the implementation before the final indexed
+OrderManager, priority-index, and transactional hot-path optimizations.
 
 Result
 ------
-The performance-engineering phase materially improved cmarket under
-matching-heavy, cancellation-heavy, and mixed workloads while
-preserving correctness.
+The performance phase replaced the primary linear-scan and full-state
+copy bottlenecks in the measured matching-engine hot paths while
+preserving price-time priority, rollback behavior, and the existing
+correctness guarantees.
 
-Final correctness state:
+On the benchmark machine, the final 100,000-operation workloads
+measured approximately:
 
-164 / 164 tests passed.
+- 2.88 million order placements per second
+- 3.82 million heavy matching operations per second
+- 4.56 million place/cancel operations per second
+- 4.92 million place/modify operations per second
+- 5.25 million mixed-workload operations per second
+
+These measurements establish the post-optimization performance
+checkpoint for the next cmarket release.
