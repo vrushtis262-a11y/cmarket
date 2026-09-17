@@ -246,6 +246,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(baseline_benchmark)
+cmarket_enable_sanitizers(baseline_benchmark)
 
 add_executable(
     latency_benchmark
@@ -259,6 +260,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(latency_benchmark)
+cmarket_enable_sanitizers(latency_benchmark)
 
 add_executable(
     throughput_benchmark
@@ -272,6 +274,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(throughput_benchmark)
+cmarket_enable_sanitizers(throughput_benchmark)
 
 if(BUILD_TESTING)
     FetchContent_Declare(
@@ -511,6 +514,26 @@ if(BUILD_TESTING)
     cmarket_enable_warnings(order_id_generator_tests)
     cmarket_enable_sanitizers(order_id_generator_tests)
 
+    add_executable(
+        blocking_queue_tests
+        tests/blocking_queue_tests.cpp
+    )
+
+    target_include_directories(
+        blocking_queue_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        blocking_queue_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(blocking_queue_tests)
+    cmarket_enable_sanitizers(blocking_queue_tests)
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
@@ -525,4 +548,5 @@ if(BUILD_TESTING)
     gtest_discover_tests(randomized_matching_tests)
     gtest_discover_tests(limit_order_tests)
     gtest_discover_tests(order_id_generator_tests)
+    gtest_discover_tests(blocking_queue_tests)
 endif()
