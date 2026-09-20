@@ -18,10 +18,27 @@ option(
 )
 
 option(
+    CMARKET_ENABLE_THREAD_SANITIZER
+    "Enable ThreadSanitizer"
+    OFF
+)
+
+option(
     CMARKET_ENABLE_LIBFUZZER
     "Enable libFuzzer for the matching engine fuzz target when supported"
     OFF
 )
+
+if(
+    CMARKET_ENABLE_SANITIZERS
+    AND
+    CMARKET_ENABLE_THREAD_SANITIZER
+)
+    message(
+        FATAL_ERROR
+        "ASan/UBSan and ThreadSanitizer must use separate build directories."
+    )
+endif()
 
 include(FetchContent)
 include(CTest)
@@ -30,6 +47,7 @@ include(CheckCXXSourceCompiles)
 find_package(Boost CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Threads REQUIRED)
 
 function(cmarket_enable_warnings target_name)
     target_compile_options(
@@ -69,11 +87,51 @@ function(cmarket_enable_sanitizers target_name)
     endif()
 endfunction()
 
+function(cmarket_enable_thread_sanitizer target_name)
+    if(NOT CMARKET_ENABLE_THREAD_SANITIZER)
+        return()
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(
+            ${target_name}
+            PRIVATE
+            -fsanitize=thread
+            -fno-omit-frame-pointer
+        )
+
+        target_link_options(
+            ${target_name}
+            PRIVATE
+            -fsanitize=thread
+            -fno-omit-frame-pointer
+        )
+    else()
+        message(
+            WARNING
+            "ThreadSanitizer is only configured for Clang and GCC."
+        )
+    endif()
+endfunction()
+
+function(cmarket_enable_instrumentation target_name)
+    cmarket_enable_sanitizers(${target_name})
+    cmarket_enable_thread_sanitizer(${target_name})
+endfunction()
+
 function(cmarket_enable_libfuzzer target_name)
     if(NOT CMARKET_ENABLE_LIBFUZZER)
         message(
             STATUS
             "libFuzzer disabled; ${target_name} will use standalone stdin mode."
+        )
+        return()
+    endif()
+
+    if(CMARKET_ENABLE_THREAD_SANITIZER)
+        message(
+            WARNING
+            "libFuzzer is disabled in the ThreadSanitizer build."
         )
         return()
     endif()
@@ -164,8 +222,14 @@ target_include_directories(
     include
 )
 
+target_link_libraries(
+    cmarket_order_book
+    PUBLIC
+    Threads::Threads
+)
+
 cmarket_enable_warnings(cmarket_order_book)
-cmarket_enable_sanitizers(cmarket_order_book)
+cmarket_enable_instrumentation(cmarket_order_book)
 
 add_library(
     cmarket_order_manager
@@ -179,7 +243,7 @@ target_include_directories(
 )
 
 cmarket_enable_warnings(cmarket_order_manager)
-cmarket_enable_sanitizers(cmarket_order_manager)
+cmarket_enable_instrumentation(cmarket_order_manager)
 
 add_library(
     cmarket_matching_engine
@@ -200,7 +264,33 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(cmarket_matching_engine)
-cmarket_enable_sanitizers(cmarket_matching_engine)
+cmarket_enable_instrumentation(cmarket_matching_engine)
+
+add_library(
+    cmarket_concurrent_matching_engine
+    src/concurrent_matching_engine.cpp
+)
+
+target_include_directories(
+    cmarket_concurrent_matching_engine
+    PUBLIC
+    include
+)
+
+target_link_libraries(
+    cmarket_concurrent_matching_engine
+    PUBLIC
+    cmarket_matching_engine
+    Threads::Threads
+)
+
+cmarket_enable_warnings(
+    cmarket_concurrent_matching_engine
+)
+
+cmarket_enable_instrumentation(
+    cmarket_concurrent_matching_engine
+)
 
 add_executable(
     cmarket
@@ -232,7 +322,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(cmarket)
-cmarket_enable_sanitizers(cmarket)
+cmarket_enable_instrumentation(cmarket)
 
 add_executable(
     baseline_benchmark
@@ -246,7 +336,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(baseline_benchmark)
-cmarket_enable_sanitizers(baseline_benchmark)
+cmarket_enable_instrumentation(baseline_benchmark)
 
 add_executable(
     latency_benchmark
@@ -260,7 +350,7 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(latency_benchmark)
-cmarket_enable_sanitizers(latency_benchmark)
+cmarket_enable_instrumentation(latency_benchmark)
 
 add_executable(
     throughput_benchmark
@@ -274,7 +364,22 @@ target_link_libraries(
 )
 
 cmarket_enable_warnings(throughput_benchmark)
-cmarket_enable_sanitizers(throughput_benchmark)
+cmarket_enable_instrumentation(throughput_benchmark)
+
+add_executable(
+    concurrent_benchmark
+    benchmarks/concurrent_benchmark.cpp
+)
+
+target_link_libraries(
+    concurrent_benchmark
+    PRIVATE
+    cmarket_concurrent_matching_engine
+    Threads::Threads
+)
+
+cmarket_enable_warnings(concurrent_benchmark)
+cmarket_enable_instrumentation(concurrent_benchmark)
 
 if(BUILD_TESTING)
     FetchContent_Declare(
@@ -307,7 +412,28 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(order_book_tests)
-    cmarket_enable_sanitizers(order_book_tests)
+    cmarket_enable_instrumentation(order_book_tests)
+
+    add_executable(
+        order_book_concurrency_tests
+        tests/order_book_concurrency_tests.cpp
+    )
+
+    target_link_libraries(
+        order_book_concurrency_tests
+        PRIVATE
+        cmarket_order_book
+        Threads::Threads
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        order_book_concurrency_tests
+    )
+
+    cmarket_enable_instrumentation(
+        order_book_concurrency_tests
+    )
 
     add_executable(
         order_book_exception_safety_tests
@@ -325,7 +451,7 @@ if(BUILD_TESTING)
         order_book_exception_safety_tests
     )
 
-    cmarket_enable_sanitizers(
+    cmarket_enable_instrumentation(
         order_book_exception_safety_tests
     )
 
@@ -347,7 +473,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(execution_tests)
-    cmarket_enable_sanitizers(execution_tests)
+    cmarket_enable_instrumentation(execution_tests)
 
     add_executable(
         matching_engine_tests
@@ -362,7 +488,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(matching_engine_tests)
-    cmarket_enable_sanitizers(matching_engine_tests)
+    cmarket_enable_instrumentation(matching_engine_tests)
 
     add_executable(
         matching_edge_cases_tests
@@ -377,7 +503,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(matching_edge_cases_tests)
-    cmarket_enable_sanitizers(matching_edge_cases_tests)
+    cmarket_enable_instrumentation(matching_edge_cases_tests)
 
     add_executable(
         trade_persistence_tests
@@ -392,7 +518,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(trade_persistence_tests)
-    cmarket_enable_sanitizers(trade_persistence_tests)
+    cmarket_enable_instrumentation(trade_persistence_tests)
 
     add_executable(
         trade_store_tests
@@ -412,7 +538,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(trade_store_tests)
-    cmarket_enable_sanitizers(trade_store_tests)
+    cmarket_enable_instrumentation(trade_store_tests)
 
     add_executable(
         order_manager_tests
@@ -427,7 +553,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(order_manager_tests)
-    cmarket_enable_sanitizers(order_manager_tests)
+    cmarket_enable_instrumentation(order_manager_tests)
 
     add_executable(
         exception_safety_tests
@@ -442,7 +568,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(exception_safety_tests)
-    cmarket_enable_sanitizers(exception_safety_tests)
+    cmarket_enable_instrumentation(exception_safety_tests)
 
     add_executable(
         randomized_matching_tests
@@ -457,7 +583,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(randomized_matching_tests)
-    cmarket_enable_sanitizers(randomized_matching_tests)
+    cmarket_enable_instrumentation(randomized_matching_tests)
 
     add_executable(
         matching_engine_fuzz
@@ -471,7 +597,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(matching_engine_fuzz)
-    cmarket_enable_sanitizers(matching_engine_fuzz)
+    cmarket_enable_instrumentation(matching_engine_fuzz)
     cmarket_enable_libfuzzer(matching_engine_fuzz)
 
     add_executable(
@@ -492,7 +618,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(limit_order_tests)
-    cmarket_enable_sanitizers(limit_order_tests)
+    cmarket_enable_instrumentation(limit_order_tests)
 
     add_executable(
         order_id_generator_tests
@@ -512,7 +638,7 @@ if(BUILD_TESTING)
     )
 
     cmarket_enable_warnings(order_id_generator_tests)
-    cmarket_enable_sanitizers(order_id_generator_tests)
+    cmarket_enable_instrumentation(order_id_generator_tests)
 
     add_executable(
         blocking_queue_tests
@@ -528,15 +654,59 @@ if(BUILD_TESTING)
     target_link_libraries(
         blocking_queue_tests
         PRIVATE
+        Threads::Threads
         GTest::gtest_main
     )
 
     cmarket_enable_warnings(blocking_queue_tests)
-    cmarket_enable_sanitizers(blocking_queue_tests)
+    cmarket_enable_instrumentation(blocking_queue_tests)
+
+    add_executable(
+        concurrent_matching_engine_tests
+        tests/concurrent_matching_engine_tests.cpp
+    )
+
+    target_link_libraries(
+        concurrent_matching_engine_tests
+        PRIVATE
+        cmarket_concurrent_matching_engine
+        Threads::Threads
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        concurrent_matching_engine_tests
+    )
+
+    cmarket_enable_instrumentation(
+        concurrent_matching_engine_tests
+    )
+
+    add_executable(
+        concurrent_stress_tests
+        tests/concurrent_stress_tests.cpp
+    )
+
+    target_link_libraries(
+        concurrent_stress_tests
+        PRIVATE
+        cmarket_concurrent_matching_engine
+        Threads::Threads
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        concurrent_stress_tests
+    )
+
+    cmarket_enable_instrumentation(
+        concurrent_stress_tests
+    )
 
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
+    gtest_discover_tests(order_book_concurrency_tests)
     gtest_discover_tests(order_book_exception_safety_tests)
     gtest_discover_tests(execution_tests)
     gtest_discover_tests(matching_engine_tests)
@@ -549,4 +719,6 @@ if(BUILD_TESTING)
     gtest_discover_tests(limit_order_tests)
     gtest_discover_tests(order_id_generator_tests)
     gtest_discover_tests(blocking_queue_tests)
+    gtest_discover_tests(concurrent_matching_engine_tests)
+    gtest_discover_tests(concurrent_stress_tests)
 endif()

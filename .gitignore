@@ -3,6 +3,7 @@ build/
 build-release/
 build-sanitize/
 build-profile/
+build-tsan/
 cmake-build-*/
 
 # macOS
