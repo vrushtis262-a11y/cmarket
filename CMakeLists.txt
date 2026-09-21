@@ -703,6 +703,31 @@ if(BUILD_TESTING)
         concurrent_stress_tests
     )
 
+    add_executable(
+        reconnect_backoff_tests
+        tests/reconnect_backoff_tests.cpp
+    )
+
+    target_include_directories(
+        reconnect_backoff_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        reconnect_backoff_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        reconnect_backoff_tests
+    )
+
+    cmarket_enable_instrumentation(
+        reconnect_backoff_tests
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
@@ -721,4 +746,5 @@ if(BUILD_TESTING)
     gtest_discover_tests(blocking_queue_tests)
     gtest_discover_tests(concurrent_matching_engine_tests)
     gtest_discover_tests(concurrent_stress_tests)
+    gtest_discover_tests(reconnect_backoff_tests)
 endif()

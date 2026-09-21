@@ -1,6 +1,7 @@
 #include "websocket_client.hpp"
 
 #include "order_book.hpp"
+#include "reconnect_backoff.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -547,7 +548,7 @@ void WebSocketClient::stream_market(
 
     constexpr char target[] = "/ws/market";
 
-    constexpr int reconnect_delay_seconds = 3;
+    ReconnectBackoff reconnect_backoff;
 
     shutdown_requested = 0;
 
@@ -646,6 +647,8 @@ void WebSocketClient::stream_market(
                     break;
                 }
 
+                reconnect_backoff.reset();
+
                 const std::string response =
                     beast::buffers_to_string(
                         buffer.data()
@@ -714,6 +717,9 @@ void WebSocketClient::stream_market(
             break;
         }
 
+        const int reconnect_delay_seconds =
+            reconnect_backoff.current_delay_seconds();
+
         std::cout
             << "Reconnecting in "
             << reconnect_delay_seconds
@@ -729,6 +735,8 @@ void WebSocketClient::stream_market(
                 std::chrono::seconds(1)
             );
         }
+
+        reconnect_backoff.advance();
     }
 
     std::signal(SIGINT, previous_sigint_handler);
