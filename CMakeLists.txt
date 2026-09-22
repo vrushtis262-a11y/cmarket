@@ -728,6 +728,30 @@ if(BUILD_TESTING)
         reconnect_backoff_tests
     )
 
+    add_executable(
+        heartbeat_state_tests
+        tests/heartbeat_state_tests.cpp
+    )
+
+    target_include_directories(
+        heartbeat_state_tests
+        PRIVATE
+        include
+    )
+
+    cmarket_enable_warnings(
+        heartbeat_state_tests
+    )
+
+    cmarket_enable_instrumentation(
+        heartbeat_state_tests
+    )
+
+    add_test(
+        NAME HeartbeatStateTest
+        COMMAND heartbeat_state_tests
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)

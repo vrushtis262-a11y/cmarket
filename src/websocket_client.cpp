@@ -1,5 +1,6 @@
 #include "websocket_client.hpp"
 
+#include "heartbeat_state.hpp"
 #include "order_book.hpp"
 #include "reconnect_backoff.hpp"
 
@@ -7,6 +8,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl/context.hpp>
 #include <boost/asio/ssl/stream.hpp>
+#include <boost/asio/steady_timer.hpp>
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/ssl.hpp>
@@ -20,6 +22,7 @@
 #include <chrono>
 #include <cstddef>
 #include <csignal>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -611,6 +614,8 @@ void WebSocketClient::stream_market(
                 << host
                 << '\n';
 
+            ws.text(true);
+
             ws.write(
                 net::buffer(subscription_message)
             );
@@ -622,62 +627,253 @@ void WebSocketClient::stream_market(
             bool snapshot_received = false;
             beast::flat_buffer buffer;
 
-            while (shutdown_requested == 0) {
+            HeartbeatState heartbeat;
+
+            net::steady_timer heartbeat_timer(
+                io_context
+            );
+
+            const std::string heartbeat_message =
+                "PING";
+
+            bool connection_stopped = false;
+            bool force_close = false;
+            bool heartbeat_write_in_progress = false;
+
+            auto stop_connection = [&]() {
+                if (connection_stopped) {
+                    return;
+                }
+
+                connection_stopped = true;
+
+                heartbeat_timer.cancel();
+
+                beast::error_code cancel_error;
+
+                beast::get_lowest_layer(ws)
+                    .socket()
+                    .cancel(cancel_error);
+            };
+
+            std::function<void()> start_read;
+
+            start_read = [&]() {
+                if (
+                    connection_stopped ||
+                    shutdown_requested != 0
+                ) {
+                    return;
+                }
+
                 buffer.consume(buffer.size());
 
-                beast::error_code error;
-                ws.read(buffer, error);
+                ws.async_read(
+                    buffer,
+                    [&](
+                        beast::error_code error,
+                        std::size_t
+                    ) {
+                        if (connection_stopped) {
+                            return;
+                        }
 
-                if (shutdown_requested != 0) {
-                    break;
+                        if (shutdown_requested != 0) {
+                            stop_connection();
+                            return;
+                        }
+
+                        if (
+                            error ==
+                            websocket::error::closed
+                        ) {
+                            std::cerr
+                                << "WebSocket connection "
+                                << "closed by server.\n";
+
+                            force_close = true;
+                            stop_connection();
+                            return;
+                        }
+
+                        if (error) {
+                            std::cerr
+                                << "WebSocket read error: "
+                                << error.message()
+                                << '\n';
+
+                            force_close = true;
+                            stop_connection();
+                            return;
+                        }
+
+                        reconnect_backoff.reset();
+
+                        const std::string response =
+                            beast::buffers_to_string(
+                                buffer.data()
+                            );
+
+                        if (response == "PONG") {
+                            heartbeat.on_pong_received();
+
+                            std::cout
+                                << "Heartbeat PONG received\n";
+
+                            start_read();
+                            return;
+                        }
+
+                        try {
+                            const json payload =
+                                json::parse(response);
+
+                            process_payload(
+                                payload,
+                                token_id,
+                                book,
+                                snapshot_received
+                            );
+                        }
+                        catch (
+                            const json::exception& error
+                        ) {
+                            std::cerr
+                                << "Ignored invalid JSON "
+                                << "message: "
+                                << error.what()
+                                << '\n';
+                        }
+                        catch (
+                            const std::exception& error
+                        ) {
+                            std::cerr
+                                << "Ignored invalid market "
+                                << "event: "
+                                << error.what()
+                                << '\n';
+                        }
+
+                        start_read();
+                    }
+                );
+            };
+
+            std::function<void()> schedule_heartbeat;
+
+            schedule_heartbeat = [&]() {
+                if (connection_stopped) {
+                    return;
                 }
 
-                if (error == websocket::error::closed) {
-                    std::cerr
-                        << "WebSocket connection closed "
-                        << "by server.\n";
-                    break;
-                }
+                heartbeat_timer.expires_after(
+                    std::chrono::seconds(1)
+                );
 
-                if (error) {
-                    std::cerr
-                        << "WebSocket read error: "
-                        << error.message()
-                        << '\n';
-                    break;
-                }
+                heartbeat_timer.async_wait(
+                    [&](
+                        beast::error_code error
+                    ) {
+                        if (connection_stopped) {
+                            return;
+                        }
 
-                reconnect_backoff.reset();
+                        if (
+                            error ==
+                            net::error::operation_aborted
+                        ) {
+                            return;
+                        }
 
-                const std::string response =
-                    beast::buffers_to_string(
-                        buffer.data()
-                    );
+                        if (error) {
+                            std::cerr
+                                << "Heartbeat timer error: "
+                                << error.message()
+                                << '\n';
 
-                try {
-                    const json payload =
-                        json::parse(response);
+                            force_close = true;
+                            stop_connection();
+                            return;
+                        }
 
-                    process_payload(
-                        payload,
-                        token_id,
-                        book,
-                        snapshot_received
-                    );
-                }
-                catch (const json::exception& error) {
-                    std::cerr
-                        << "Ignored invalid JSON message: "
-                        << error.what()
-                        << '\n';
-                }
-                catch (const std::exception& error) {
-                    std::cerr
-                        << "Ignored invalid market event: "
-                        << error.what()
-                        << '\n';
-                }
-            }
+                        if (shutdown_requested != 0) {
+                            stop_connection();
+                            return;
+                        }
+
+                        const auto now =
+                            HeartbeatState::Clock::now();
+
+                        if (
+                            heartbeat.pong_timed_out(now)
+                        ) {
+                            std::cerr
+                                << "WebSocket heartbeat "
+                                << "timeout: no PONG "
+                                << "received within "
+                                << HeartbeatState::
+                                       pong_timeout.count()
+                                << " seconds.\n";
+
+                            force_close = true;
+                            stop_connection();
+                            return;
+                        }
+
+                        if (
+                            heartbeat.should_send_ping(now) &&
+                            !heartbeat_write_in_progress
+                        ) {
+                            heartbeat_write_in_progress =
+                                true;
+
+                            heartbeat.on_ping_sent(now);
+
+                            ws.async_write(
+                                net::buffer(
+                                    heartbeat_message
+                                ),
+                                [&](
+                                    beast::error_code
+                                        write_error,
+                                    std::size_t
+                                ) {
+                                    heartbeat_write_in_progress =
+                                        false;
+
+                                    if (connection_stopped) {
+                                        return;
+                                    }
+
+                                    if (write_error) {
+                                        std::cerr
+                                            << "WebSocket "
+                                            << "heartbeat "
+                                            << "write error: "
+                                            << write_error
+                                                   .message()
+                                            << '\n';
+
+                                        force_close = true;
+                                        stop_connection();
+                                        return;
+                                    }
+
+                                    std::cout
+                                        << "Heartbeat PING sent\n";
+                                }
+                            );
+                        }
+
+                        schedule_heartbeat();
+                    }
+                );
+            };
+
+            start_read();
+            schedule_heartbeat();
+
+            io_context.run();
 
             if (shutdown_requested != 0) {
                 std::cout
@@ -685,7 +881,14 @@ void WebSocketClient::stream_market(
                     << "Closing WebSocket...\n";
             }
 
-            if (ws.is_open()) {
+            if (force_close) {
+                beast::error_code close_error;
+
+                beast::get_lowest_layer(ws)
+                    .socket()
+                    .close(close_error);
+            }
+            else if (ws.is_open()) {
                 beast::error_code close_error;
 
                 ws.close(
