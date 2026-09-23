@@ -752,6 +752,66 @@ if(BUILD_TESTING)
         COMMAND heartbeat_state_tests
     )
 
+    add_executable(
+        websocket_message_parser_tests
+        tests/websocket_message_parser_tests.cpp
+    )
+
+    target_include_directories(
+        websocket_message_parser_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        websocket_message_parser_tests
+        PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+
+    cmarket_enable_warnings(
+        websocket_message_parser_tests
+    )
+
+    cmarket_enable_instrumentation(
+        websocket_message_parser_tests
+    )
+
+    add_test(
+        NAME WebSocketMessageParserTest
+        COMMAND websocket_message_parser_tests
+    )
+
+    add_executable(
+        websocket_payload_dispatcher_tests
+        tests/websocket_payload_dispatcher_tests.cpp
+    )
+
+    target_include_directories(
+        websocket_payload_dispatcher_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        websocket_payload_dispatcher_tests
+        PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+
+    cmarket_enable_warnings(
+        websocket_payload_dispatcher_tests
+    )
+
+    cmarket_enable_instrumentation(
+        websocket_payload_dispatcher_tests
+    )
+
+    add_test(
+        NAME WebSocketPayloadDispatcherTest
+        COMMAND websocket_payload_dispatcher_tests
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)

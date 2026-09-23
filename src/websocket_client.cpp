@@ -3,6 +3,8 @@
 #include "heartbeat_state.hpp"
 #include "order_book.hpp"
 #include "reconnect_backoff.hpp"
+#include "websocket_message_parser.hpp"
+#include "websocket_payload_dispatcher.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -498,32 +500,23 @@ void process_payload(
     bool& snapshot_received
 )
 {
-    if (payload.is_array()) {
-        for (const json& message : payload) {
+    WebSocketPayloadDispatcher::dispatch(
+        payload,
+        [&](const json& message) {
             process_message(
                 message,
                 token_id,
                 book,
                 snapshot_received
             );
+        },
+        [](const std::exception& error) {
+            std::cerr
+                << "Ignored invalid market event: "
+                << error.what()
+                << '\n';
         }
-
-        return;
-    }
-
-    if (payload.is_object()) {
-        process_message(
-            payload,
-            token_id,
-            book,
-            snapshot_received
-        );
-
-        return;
-    }
-
-    std::cout
-        << "Ignored unsupported WebSocket payload\n";
+    );
 }
 
 } // namespace
@@ -714,7 +707,16 @@ void WebSocketClient::stream_market(
                                 buffer.data()
                             );
 
-                        if (response == "PONG") {
+                        const WebSocketParseResult
+                            parse_result =
+                                WebSocketMessageParser::parse(
+                                    response
+                                );
+
+                        if (
+                            parse_result.kind ==
+                            WebSocketMessageKind::pong
+                        ) {
                             heartbeat.on_pong_received();
 
                             std::cout
@@ -724,12 +726,23 @@ void WebSocketClient::stream_market(
                             return;
                         }
 
-                        try {
-                            const json payload =
-                                json::parse(response);
+                        if (
+                            parse_result.kind ==
+                            WebSocketMessageKind::invalid
+                        ) {
+                            std::cerr
+                                << "Ignored invalid WebSocket "
+                                << "message: "
+                                << parse_result.error_message
+                                << '\n';
 
+                            start_read();
+                            return;
+                        }
+
+                        try {
                             process_payload(
-                                payload,
+                                parse_result.payload,
                                 token_id,
                                 book,
                                 snapshot_received
@@ -739,8 +752,8 @@ void WebSocketClient::stream_market(
                             const json::exception& error
                         ) {
                             std::cerr
-                                << "Ignored invalid JSON "
-                                << "message: "
+                                << "Ignored malformed market "
+                                << "payload: "
                                 << error.what()
                                 << '\n';
                         }
