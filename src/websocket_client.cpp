@@ -2,9 +2,11 @@
 
 #include "heartbeat_state.hpp"
 #include "order_book.hpp"
+#include "websocket_market_state.hpp"
 #include "reconnect_backoff.hpp"
 #include "websocket_message_parser.hpp"
 #include "websocket_payload_dispatcher.hpp"
+#include "websocket_subscription.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -296,10 +298,9 @@ void print_live_book(const OrderBook& book)
         << "==================================\n";
 }
 
-void apply_price_change(
+std::string apply_price_change(
     const json& change,
-    const std::string& token_id,
-    OrderBook& book
+    WebSocketMarketState& market_state
 )
 {
     if (!change.is_object()) {
@@ -335,8 +336,27 @@ void apply_price_change(
         change.at("asset_id")
             .get<std::string>();
 
-    if (asset_id != token_id) {
-        return;
+    if (!market_state.contains(asset_id)) {
+        std::cout
+            << "Ignored price change for unsubscribed "
+            << "token: "
+            << asset_id
+            << '\n';
+
+        return {};
+    }
+
+    WebSocketTokenState& token_state =
+        market_state.at(asset_id);
+
+    if (!token_state.snapshot_received) {
+        std::cout
+            << "Ignored price_change before initial "
+            << "book snapshot for token "
+            << asset_id
+            << ".\n";
+
+        return {};
     }
 
     const std::int64_t price_ticks =
@@ -356,13 +376,13 @@ void apply_price_change(
             .get<std::string>();
 
     if (side == "BUY") {
-        book.update_bid(
+        token_state.book.update_bid(
             price_ticks,
             quantity
         );
     }
     else if (side == "SELL") {
-        book.update_ask(
+        token_state.book.update_ask(
             price_ticks,
             quantity
         );
@@ -377,7 +397,9 @@ void apply_price_change(
     std::cout
         << "Applied "
         << side
-        << " update at "
+        << " update for token "
+        << asset_id
+        << " at "
         << OrderBook::format_price(
                price_ticks,
                3
@@ -385,12 +407,13 @@ void apply_price_change(
         << " with size "
         << change.at("size").get<std::string>()
         << '\n';
+
+    return asset_id;
 }
 
 void process_price_change(
     const json& message,
-    const std::string& token_id,
-    OrderBook& book
+    WebSocketMarketState& market_state
 )
 {
     if (!message.contains("price_changes")) {
@@ -409,25 +432,48 @@ void process_price_change(
         );
     }
 
+    std::vector<std::string> updated_token_ids;
+
     for (const json& change : changes) {
-        apply_price_change(
-            change,
-            token_id,
-            book
-        );
+        const std::string updated_token_id =
+            apply_price_change(
+                change,
+                market_state
+            );
+
+        if (
+            !updated_token_id.empty() &&
+            std::find(
+                updated_token_ids.begin(),
+                updated_token_ids.end(),
+                updated_token_id
+            ) == updated_token_ids.end()
+        ) {
+            updated_token_ids.push_back(
+                updated_token_id
+            );
+        }
     }
 
-    std::cout
-        << "========================\n";
+    for (
+        const std::string& token_id :
+        updated_token_ids
+    ) {
+        std::cout
+            << "========================\n"
+            << "Token: "
+            << token_id
+            << '\n';
 
-    print_live_book(book);
+        print_live_book(
+            market_state.at(token_id).book
+        );
+    }
 }
 
 void process_message(
     const json& message,
-    const std::string& token_id,
-    OrderBook& book,
-    bool& snapshot_received
+    WebSocketMarketState& market_state
 )
 {
     if (!message.is_object()) {
@@ -455,38 +501,62 @@ void process_message(
         << '\n';
 
     if (event_type == "book") {
+        if (
+            !message.contains("asset_id") ||
+            !message.at("asset_id").is_string()
+        ) {
+            throw std::runtime_error(
+                "book event is missing a valid asset_id."
+            );
+        }
+
+        const std::string asset_id =
+            message.at("asset_id")
+                .get<std::string>();
+
+        if (!market_state.contains(asset_id)) {
+            std::cout
+                << "Ignored book event for unsubscribed "
+                << "token: "
+                << asset_id
+                << '\n';
+
+            return;
+        }
+
         std::vector<PriceLevel> bids =
             parse_levels(message, "bids");
 
         std::vector<PriceLevel> asks =
             parse_levels(message, "asks");
 
-        book.replace_snapshot(
+        WebSocketTokenState& token_state =
+            market_state.at(asset_id);
+
+        token_state.book.replace_snapshot(
             std::move(bids),
             std::move(asks)
         );
 
+        token_state.snapshot_received = true;
+
         std::cout
-            << "========================\n";
+            << "========================\n"
+            << "Token: "
+            << asset_id
+            << '\n';
 
-        snapshot_received = true;
+        print_live_book(
+            token_state.book
+        );
 
-        print_live_book(book);
         return;
     }
 
     if (event_type == "price_change") {
-        if (!snapshot_received) {
-            std::cout
-                << "Ignored price_change before initial "
-                << "book snapshot.\n";
-            return;
-        }
-
         process_price_change(
             message,
-            token_id,
-            book
+            market_state
         );
 
         return;
@@ -495,9 +565,7 @@ void process_message(
 
 void process_payload(
     const json& payload,
-    const std::string& token_id,
-    OrderBook& book,
-    bool& snapshot_received
+    WebSocketMarketState& market_state
 )
 {
     WebSocketPayloadDispatcher::dispatch(
@@ -505,9 +573,7 @@ void process_payload(
         [&](const json& message) {
             process_message(
                 message,
-                token_id,
-                book,
-                snapshot_received
+                market_state
             );
         },
         [](const std::exception& error) {
@@ -522,19 +588,27 @@ void process_payload(
 } // namespace
 
 std::string WebSocketClient::build_subscription_message(
-    const std::string& token_id
+    const std::vector<std::string>& token_ids
 )
 {
-    const json message = {
-        {"assets_ids", {token_id}},
-        {"type", "market"}
-    };
-
-    return message.dump();
+    return WebSocketSubscription::build_market(
+        token_ids
+    );
 }
 
 void WebSocketClient::stream_market(
     const std::string& token_id
+) const
+{
+    stream_market(
+        std::vector<std::string>{
+            token_id
+        }
+    );
+}
+
+void WebSocketClient::stream_market(
+    const std::vector<std::string>& token_ids
 ) const
 {
     constexpr char host[] =
@@ -555,7 +629,7 @@ void WebSocketClient::stream_market(
         std::signal(SIGTERM, handle_shutdown_signal);
 
     const std::string subscription_message =
-        build_subscription_message(token_id);
+        build_subscription_message(token_ids);
 
     std::cout
         << "Press Ctrl+C to stop streaming.\n";
@@ -616,8 +690,10 @@ void WebSocketClient::stream_market(
             std::cout
                 << "Subscription sent\n";
 
-            OrderBook book;
-            bool snapshot_received = false;
+            WebSocketMarketState market_state(
+                token_ids
+            );
+
             beast::flat_buffer buffer;
 
             HeartbeatState heartbeat;
@@ -743,9 +819,7 @@ void WebSocketClient::stream_market(
                         try {
                             process_payload(
                                 parse_result.payload,
-                                token_id,
-                                book,
-                                snapshot_received
+                                market_state
                             );
                         }
                         catch (

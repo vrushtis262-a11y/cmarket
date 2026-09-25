@@ -218,16 +218,26 @@ void run_book_command(const std::string& token_id)
     print_order_book(book);
 }
 
-void run_stream_command(const std::string& token_id)
+void run_stream_command(
+    const std::vector<std::string>& token_ids
+)
 {
-    if (token_id.empty()) {
+    if (token_ids.empty()) {
         throw std::invalid_argument(
-            "Token ID cannot be empty."
+            "At least one token ID is required."
         );
     }
 
+    for (const std::string& token_id : token_ids) {
+        if (token_id.empty()) {
+            throw std::invalid_argument(
+                "Token ID cannot be empty."
+            );
+        }
+    }
+
     const WebSocketClient client;
-    client.stream_market(token_id);
+    client.stream_market(token_ids);
 }
 
 void print_usage(const std::string& program_name)
@@ -239,7 +249,7 @@ void print_usage(const std::string& program_name)
         << " book <token-id>\n"
         << "  "
         << program_name
-        << " stream <token-id>\n";
+        << " stream <token-id> [token-id ...]\n";
 }
 
 } // namespace
@@ -247,21 +257,33 @@ void print_usage(const std::string& program_name)
 int main(int argc, char* argv[])
 {
     try {
-        if (argc != 3) {
+        if (argc < 3) {
             print_usage(argv[0]);
             return 1;
         }
 
         const std::string command = argv[1];
-        const std::string token_id = argv[2];
 
         if (command == "book") {
-            run_book_command(token_id);
+            if (argc != 3) {
+                print_usage(argv[0]);
+                return 1;
+            }
+
+            run_book_command(argv[2]);
             return 0;
         }
 
         if (command == "stream") {
-            run_stream_command(token_id);
+            std::vector<std::string> token_ids;
+
+            for (int index = 2; index < argc; ++index) {
+                token_ids.emplace_back(
+                    argv[index]
+                );
+            }
+
+            run_stream_command(token_ids);
             return 0;
         }
 

@@ -812,6 +812,66 @@ if(BUILD_TESTING)
         COMMAND websocket_payload_dispatcher_tests
     )
 
+    add_executable(
+        websocket_subscription_tests
+        tests/websocket_subscription_tests.cpp
+    )
+
+    target_include_directories(
+        websocket_subscription_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        websocket_subscription_tests
+        PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+
+    cmarket_enable_warnings(
+        websocket_subscription_tests
+    )
+
+    cmarket_enable_instrumentation(
+        websocket_subscription_tests
+    )
+
+    add_test(
+        NAME WebSocketSubscriptionTest
+        COMMAND websocket_subscription_tests
+    )
+
+    add_executable(
+        websocket_market_state_tests
+        tests/websocket_market_state_tests.cpp
+    )
+
+    target_include_directories(
+        websocket_market_state_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        websocket_market_state_tests
+        PRIVATE
+        cmarket_order_book
+    )
+
+    cmarket_enable_warnings(
+        websocket_market_state_tests
+    )
+
+    cmarket_enable_instrumentation(
+        websocket_market_state_tests
+    )
+
+    add_test(
+        NAME WebSocketMarketStateTest
+        COMMAND websocket_market_state_tests
+    )
+
     include(GoogleTest)
 
     gtest_discover_tests(order_book_tests)
