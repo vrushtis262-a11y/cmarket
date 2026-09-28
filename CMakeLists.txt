@@ -476,6 +476,66 @@ if(BUILD_TESTING)
     cmarket_enable_instrumentation(execution_tests)
 
     add_executable(
+        position_tests
+        tests/position_tests.cpp
+    )
+
+    target_include_directories(
+        position_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        position_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(position_tests)
+    cmarket_enable_instrumentation(position_tests)
+
+    add_executable(
+        position_manager_tests
+        tests/position_manager_tests.cpp
+    )
+
+    target_include_directories(
+        position_manager_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        position_manager_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(position_manager_tests)
+    cmarket_enable_instrumentation(position_manager_tests)
+
+    add_executable(
+        position_execution_handler_tests
+        tests/position_execution_handler_tests.cpp
+    )
+
+    target_include_directories(
+        position_execution_handler_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        position_execution_handler_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(position_execution_handler_tests)
+    cmarket_enable_instrumentation(position_execution_handler_tests)
+
+    add_executable(
         matching_engine_tests
         tests/matching_engine_tests.cpp
     )
@@ -878,6 +938,9 @@ if(BUILD_TESTING)
     gtest_discover_tests(order_book_concurrency_tests)
     gtest_discover_tests(order_book_exception_safety_tests)
     gtest_discover_tests(execution_tests)
+    gtest_discover_tests(position_tests)
+    gtest_discover_tests(position_manager_tests)
+    gtest_discover_tests(position_execution_handler_tests)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)
     gtest_discover_tests(trade_persistence_tests)
@@ -891,4 +954,4 @@ if(BUILD_TESTING)
     gtest_discover_tests(concurrent_matching_engine_tests)
     gtest_discover_tests(concurrent_stress_tests)
     gtest_discover_tests(reconnect_backoff_tests)
-endif()
+endif()                                                                            
