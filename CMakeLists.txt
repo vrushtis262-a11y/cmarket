@@ -536,6 +536,26 @@ if(BUILD_TESTING)
     cmarket_enable_instrumentation(position_execution_handler_tests)
 
     add_executable(
+        position_pnl_tests
+        tests/position_pnl_tests.cpp
+    )
+
+    target_include_directories(
+        position_pnl_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        position_pnl_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(position_pnl_tests)
+    cmarket_enable_instrumentation(position_pnl_tests)
+
+    add_executable(
         matching_engine_tests
         tests/matching_engine_tests.cpp
     )
@@ -941,6 +961,7 @@ if(BUILD_TESTING)
     gtest_discover_tests(position_tests)
     gtest_discover_tests(position_manager_tests)
     gtest_discover_tests(position_execution_handler_tests)
+    gtest_discover_tests(position_pnl_tests)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)
     gtest_discover_tests(trade_persistence_tests)
@@ -954,4 +975,4 @@ if(BUILD_TESTING)
     gtest_discover_tests(concurrent_matching_engine_tests)
     gtest_discover_tests(concurrent_stress_tests)
     gtest_discover_tests(reconnect_backoff_tests)
-endif()                                                                            
+endif()

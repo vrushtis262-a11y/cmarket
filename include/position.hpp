@@ -11,11 +11,15 @@ class Position {
 public:
     using Quantity = std::int64_t;
     using Price = std::int64_t;
+    using Pnl = std::int64_t;
 
     explicit Position(std::string symbol)
         : symbol_(std::move(symbol)),
           quantity_(0),
-          average_entry_price_ticks_(0) {}
+          average_entry_price_ticks_(0),
+          realized_pnl_ticks_(0)
+    {
+    }
 
     Position(
         std::string symbol,
@@ -26,7 +30,10 @@ public:
           quantity_(quantity),
           average_entry_price_ticks_(
               average_entry_price_ticks
-          ) {}
+          ),
+          realized_pnl_ticks_(0)
+    {
+    }
 
     [[nodiscard]]
     const std::string& symbol() const noexcept {
@@ -44,6 +51,11 @@ public:
     }
 
     [[nodiscard]]
+    Pnl realized_pnl_ticks() const noexcept {
+        return realized_pnl_ticks_;
+    }
+
+    [[nodiscard]]
     bool is_flat() const noexcept {
         return quantity_ == 0;
     }
@@ -56,6 +68,30 @@ public:
     [[nodiscard]]
     bool is_short() const noexcept {
         return quantity_ < 0;
+    }
+
+    [[nodiscard]]
+    Pnl unrealized_pnl_ticks(
+        Price market_price_ticks
+    ) const {
+        if (market_price_ticks <= 0) {
+            throw std::invalid_argument(
+                "Market price must be positive"
+            );
+        }
+
+        if (quantity_ == 0) {
+            return 0;
+        }
+
+        const __int128 pnl =
+            static_cast<__int128>(
+                market_price_ticks -
+                average_entry_price_ticks_
+            ) *
+            static_cast<__int128>(quantity_);
+
+        return static_cast<Pnl>(pnl);
     }
 
     void apply_trade(
@@ -74,7 +110,6 @@ public:
             );
         }
 
-        // Opening a position from flat.
         if (quantity_ == 0) {
             quantity_ = quantity;
             average_entry_price_ticks_ =
@@ -88,8 +123,6 @@ public:
         const bool trade_is_buy =
             quantity > 0;
 
-        // Same direction: increase the existing position and
-        // calculate a new weighted average entry price.
         if (current_is_long == trade_is_buy) {
             const Quantity old_absolute_quantity =
                 absolute_quantity(quantity_);
@@ -133,9 +166,38 @@ public:
         const Quantity trade_absolute_quantity =
             absolute_quantity(quantity);
 
-        // Opposite direction but smaller than the current
-        // position: reduce it without changing the average
-        // entry price.
+        const Quantity closing_quantity =
+            trade_absolute_quantity <
+                    old_absolute_quantity
+                ? trade_absolute_quantity
+                : old_absolute_quantity;
+
+        const __int128 price_difference =
+            current_is_long
+                ? static_cast<__int128>(
+                      price_ticks
+                  ) -
+                      static_cast<__int128>(
+                          average_entry_price_ticks_
+                      )
+                : static_cast<__int128>(
+                      average_entry_price_ticks_
+                  ) -
+                      static_cast<__int128>(
+                          price_ticks
+                      );
+
+        const __int128 realized_change =
+            price_difference *
+            static_cast<__int128>(
+                closing_quantity
+            );
+
+        realized_pnl_ticks_ +=
+            static_cast<Pnl>(
+                realized_change
+            );
+
         if (
             trade_absolute_quantity <
             old_absolute_quantity
@@ -144,7 +206,6 @@ public:
             return;
         }
 
-        // Exactly offsets the current position.
         if (
             trade_absolute_quantity ==
             old_absolute_quantity
@@ -154,9 +215,6 @@ public:
             return;
         }
 
-        // The trade is larger than the current position,
-        // so the position flips direction. The remaining
-        // quantity opens at the new trade price.
         quantity_ += quantity;
         average_entry_price_ticks_ =
             price_ticks;
@@ -174,6 +232,7 @@ private:
     std::string symbol_;
     Quantity quantity_;
     Price average_entry_price_ticks_;
+    Pnl realized_pnl_ticks_;
 };
 
 }  // namespace cmarket
