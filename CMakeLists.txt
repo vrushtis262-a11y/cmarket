@@ -556,6 +556,26 @@ if(BUILD_TESTING)
     cmarket_enable_instrumentation(position_pnl_tests)
 
     add_executable(
+        exposure_limit_tests
+        tests/exposure_limit_tests.cpp
+    )
+
+    target_include_directories(
+        exposure_limit_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        exposure_limit_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(exposure_limit_tests)
+    cmarket_enable_instrumentation(exposure_limit_tests)
+
+    add_executable(
         matching_engine_tests
         tests/matching_engine_tests.cpp
     )
@@ -962,6 +982,7 @@ if(BUILD_TESTING)
     gtest_discover_tests(position_manager_tests)
     gtest_discover_tests(position_execution_handler_tests)
     gtest_discover_tests(position_pnl_tests)
+    gtest_discover_tests(exposure_limit_tests)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)
     gtest_discover_tests(trade_persistence_tests)
