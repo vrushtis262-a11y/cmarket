@@ -576,6 +576,47 @@ if(BUILD_TESTING)
     cmarket_enable_instrumentation(exposure_limit_tests)
 
     add_executable(
+        risk_validator_tests
+        tests/risk_validator_tests.cpp
+    )
+
+    target_include_directories(
+        risk_validator_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        risk_validator_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(risk_validator_tests)
+    cmarket_enable_instrumentation(risk_validator_tests)
+
+    add_executable(
+        risk_integration_tests
+        tests/risk_integration_tests.cpp
+    )
+
+    target_include_directories(
+        risk_integration_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        risk_integration_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(risk_integration_tests)
+    cmarket_enable_instrumentation(risk_integration_tests)
+
+    add_executable(
         matching_engine_tests
         tests/matching_engine_tests.cpp
     )
@@ -983,6 +1024,8 @@ if(BUILD_TESTING)
     gtest_discover_tests(position_execution_handler_tests)
     gtest_discover_tests(position_pnl_tests)
     gtest_discover_tests(exposure_limit_tests)
+    gtest_discover_tests(risk_validator_tests)
+    gtest_discover_tests(risk_integration_tests)
     gtest_discover_tests(matching_engine_tests)
     gtest_discover_tests(matching_edge_cases_tests)
     gtest_discover_tests(trade_persistence_tests)
