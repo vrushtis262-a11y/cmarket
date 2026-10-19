@@ -1,5 +1,7 @@
+
 #pragma once
 
+#include "analytics_execution_handler.hpp"
 #include "matching_engine.hpp"
 #include "position_execution_handler.hpp"
 #include "risk_validator.hpp"
@@ -17,11 +19,13 @@ public:
     RiskManagedExecution(
         MatchingEngine& matching_engine,
         const RiskValidator& risk_validator,
-        PositionExecutionHandler& position_handler
+        PositionExecutionHandler& position_handler,
+        AnalyticsExecutionHandler* analytics_handler = nullptr
     ) noexcept
         : matching_engine_(matching_engine),
           risk_validator_(risk_validator),
-          position_handler_(position_handler)
+          position_handler_(position_handler),
+          analytics_handler_(analytics_handler)
     {
     }
 
@@ -32,26 +36,29 @@ public:
     ) {
         validate_quantity(quantity);
 
-        if (
-            !risk_validator_.is_trade_allowed(
+        if (!risk_validator_.is_trade_allowed(
                 symbol,
                 quantity
-            )
-        ) {
+            )) {
             throw std::runtime_error(
                 "Market buy rejected by risk limits"
             );
         }
 
         ExecutionResult result =
-            matching_engine_.execute_market_buy(
-                quantity
-            );
+            matching_engine_.execute_market_buy(quantity);
 
         position_handler_.apply_execution(
             symbol,
             result
         );
+
+        if (analytics_handler_ != nullptr) {
+            analytics_handler_->apply_execution(
+                symbol,
+                result
+            );
+        }
 
         return result;
     }
@@ -63,34 +70,36 @@ public:
     ) {
         validate_quantity(quantity);
 
-        if (
-            !risk_validator_.is_trade_allowed(
+        if (!risk_validator_.is_trade_allowed(
                 symbol,
                 -quantity
-            )
-        ) {
+            )) {
             throw std::runtime_error(
                 "Market sell rejected by risk limits"
             );
         }
 
         ExecutionResult result =
-            matching_engine_.execute_market_sell(
-                quantity
-            );
+            matching_engine_.execute_market_sell(quantity);
 
         position_handler_.apply_execution(
             symbol,
             result
         );
 
+        if (analytics_handler_ != nullptr) {
+            analytics_handler_->apply_execution(
+                symbol,
+                result
+            );
+        }
+
         return result;
     }
 
 private:
-    static void validate_quantity(
-        Quantity quantity
-    ) {
+    static void validate_quantity(Quantity quantity)
+    {
         if (quantity <= 0) {
             throw std::invalid_argument(
                 "Market order quantity must be positive"
@@ -101,6 +110,7 @@ private:
     MatchingEngine& matching_engine_;
     const RiskValidator& risk_validator_;
     PositionExecutionHandler& position_handler_;
+    AnalyticsExecutionHandler* analytics_handler_;
 };
 
-}  // namespace cmarket
+} // namespace cmarket

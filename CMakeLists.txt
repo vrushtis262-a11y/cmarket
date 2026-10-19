@@ -1039,4 +1039,111 @@ if(BUILD_TESTING)
     gtest_discover_tests(concurrent_matching_engine_tests)
     gtest_discover_tests(concurrent_stress_tests)
     gtest_discover_tests(reconnect_backoff_tests)
+
+    add_executable(
+        rolling_vwap_tests
+        tests/rolling_vwap_tests.cpp
+    )
+
+    target_include_directories(
+        rolling_vwap_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        rolling_vwap_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(rolling_vwap_tests)
+    cmarket_enable_instrumentation(rolling_vwap_tests)
+
+    gtest_discover_tests(rolling_vwap_tests)
+
+
+    add_executable(
+        trade_statistics_tests
+        tests/trade_statistics_tests.cpp
+    )
+
+    target_include_directories(
+        trade_statistics_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        trade_statistics_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(trade_statistics_tests)
+    cmarket_enable_instrumentation(trade_statistics_tests)
+
+    gtest_discover_tests(trade_statistics_tests)
+
+
+    add_executable(
+        analytics_execution_handler_tests
+        tests/analytics_execution_handler_tests.cpp
+    )
+
+    target_include_directories(
+        analytics_execution_handler_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        analytics_execution_handler_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        analytics_execution_handler_tests
+    )
+
+    cmarket_enable_instrumentation(
+        analytics_execution_handler_tests
+    )
+
+    gtest_discover_tests(
+        analytics_execution_handler_tests
+    )
+
+
+    add_executable(
+        analytics_integration_tests
+        tests/analytics_integration_tests.cpp
+    )
+
+    target_include_directories(
+        analytics_integration_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        analytics_integration_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        analytics_integration_tests
+    )
+
+    cmarket_enable_instrumentation(
+        analytics_integration_tests
+    )
+
+    gtest_discover_tests(
+        analytics_integration_tests
+    )
+
 endif()
