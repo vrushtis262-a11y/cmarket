@@ -1146,4 +1146,178 @@ if(BUILD_TESTING)
         analytics_integration_tests
     )
 
+
+    add_executable(
+        order_flow_imbalance_tests
+        tests/order_flow_imbalance_tests.cpp
+    )
+
+    target_include_directories(
+        order_flow_imbalance_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        order_flow_imbalance_tests
+        PRIVATE
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(order_flow_imbalance_tests)
+    cmarket_enable_instrumentation(order_flow_imbalance_tests)
+
+    gtest_discover_tests(order_flow_imbalance_tests)
+
+
+    add_executable(
+        ofi_order_book_handler_tests
+        tests/ofi_order_book_handler_tests.cpp
+    )
+
+    target_include_directories(
+        ofi_order_book_handler_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        ofi_order_book_handler_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(ofi_order_book_handler_tests)
+    cmarket_enable_instrumentation(ofi_order_book_handler_tests)
+
+    gtest_discover_tests(ofi_order_book_handler_tests)
+
+
+    add_executable(
+        ofi_observable_order_book_tests
+        tests/ofi_observable_order_book_tests.cpp
+    )
+
+    target_include_directories(
+        ofi_observable_order_book_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        ofi_observable_order_book_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        ofi_observable_order_book_tests
+    )
+
+    cmarket_enable_instrumentation(
+        ofi_observable_order_book_tests
+    )
+
+    gtest_discover_tests(
+        ofi_observable_order_book_tests
+    )
+
+
+    add_executable(
+        ofi_matching_engine_adapter_tests
+        tests/ofi_matching_engine_adapter_tests.cpp
+    )
+
+    target_include_directories(
+        ofi_matching_engine_adapter_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        ofi_matching_engine_adapter_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        ofi_matching_engine_adapter_tests
+    )
+
+    cmarket_enable_instrumentation(
+        ofi_matching_engine_adapter_tests
+    )
+
+    gtest_discover_tests(
+        ofi_matching_engine_adapter_tests
+    )
+
+
+    add_executable(
+        ofi_concurrent_matching_adapter_tests
+        tests/ofi_concurrent_matching_adapter_tests.cpp
+    )
+
+    target_include_directories(
+        ofi_concurrent_matching_adapter_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        ofi_concurrent_matching_adapter_tests
+        PRIVATE
+        cmarket_concurrent_matching_engine
+        Threads::Threads
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        ofi_concurrent_matching_adapter_tests
+    )
+
+    cmarket_enable_instrumentation(
+        ofi_concurrent_matching_adapter_tests
+    )
+
+    gtest_discover_tests(
+        ofi_concurrent_matching_adapter_tests
+    )
+
+
+    add_executable(
+        ofi_analytics_failure_tests
+        tests/ofi_analytics_failure_tests.cpp
+    )
+
+    target_include_directories(
+        ofi_analytics_failure_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        ofi_analytics_failure_tests
+        PRIVATE
+        cmarket_concurrent_matching_engine
+        cmarket_matching_engine
+        Threads::Threads
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        ofi_analytics_failure_tests
+    )
+
+    cmarket_enable_instrumentation(
+        ofi_analytics_failure_tests
+    )
+
+    gtest_discover_tests(
+        ofi_analytics_failure_tests
+    )
+
 endif()
