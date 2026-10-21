@@ -1320,4 +1320,97 @@ if(BUILD_TESTING)
         ofi_analytics_failure_tests
     )
 
+
+    add_executable(
+        depth_analytics_tests
+        tests/depth_analytics_tests.cpp
+    )
+
+    target_include_directories(
+        depth_analytics_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        depth_analytics_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        depth_analytics_tests
+    )
+
+    cmarket_enable_instrumentation(
+        depth_analytics_tests
+    )
+
+    gtest_discover_tests(
+        depth_analytics_tests
+    )
+
+
+    add_executable(
+        liquidity_concentration_tests
+        tests/liquidity_concentration_tests.cpp
+    )
+
+    target_include_directories(
+        liquidity_concentration_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        liquidity_concentration_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        liquidity_concentration_tests
+    )
+
+    cmarket_enable_instrumentation(
+        liquidity_concentration_tests
+    )
+
+    gtest_discover_tests(
+        liquidity_concentration_tests
+    )
+
+
+    add_executable(
+        depth_weighted_pricing_tests
+        tests/depth_weighted_pricing_tests.cpp
+    )
+
+    target_include_directories(
+        depth_weighted_pricing_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        depth_weighted_pricing_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        depth_weighted_pricing_tests
+    )
+
+    cmarket_enable_instrumentation(
+        depth_weighted_pricing_tests
+    )
+
+    gtest_discover_tests(
+        depth_weighted_pricing_tests
+    )
+
 endif()
