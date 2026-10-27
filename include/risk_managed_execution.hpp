@@ -53,12 +53,7 @@ public:
             result
         );
 
-        if (analytics_handler_ != nullptr) {
-            analytics_handler_->apply_execution(
-                symbol,
-                result
-            );
-        }
+        apply_analytics(symbol, result);
 
         return result;
     }
@@ -87,14 +82,14 @@ public:
             result
         );
 
-        if (analytics_handler_ != nullptr) {
-            analytics_handler_->apply_execution(
-                symbol,
-                result
-            );
-        }
+        apply_analytics(symbol, result);
 
         return result;
+    }
+
+    [[nodiscard]]
+    bool analytics_healthy() const noexcept {
+        return analytics_healthy_;
     }
 
 private:
@@ -107,10 +102,32 @@ private:
         }
     }
 
+    void apply_analytics(
+        const std::string& symbol,
+        const ExecutionResult& result
+    ) noexcept {
+        if (analytics_handler_ == nullptr ||
+            result.executed_quantity == 0) {
+            return;
+        }
+
+        try {
+            analytics_handler_->apply_execution(
+                symbol,
+                result
+            );
+        } catch (...) {
+            // Analytics failures must not change committed trades.
+            analytics_healthy_ = false;
+        }
+    }
+
     MatchingEngine& matching_engine_;
     const RiskValidator& risk_validator_;
     PositionExecutionHandler& position_handler_;
     AnalyticsExecutionHandler* analytics_handler_;
+
+    bool analytics_healthy_ = true;
 };
 
 } // namespace cmarket

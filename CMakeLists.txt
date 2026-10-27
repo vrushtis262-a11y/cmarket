@@ -1413,4 +1413,149 @@ if(BUILD_TESTING)
         depth_weighted_pricing_tests
     )
 
+    add_executable(
+        market_impact_tests
+        tests/market_impact_tests.cpp
+    )
+
+    target_include_directories(
+        market_impact_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        market_impact_tests
+        PRIVATE
+        cmarket_order_book
+    )
+
+    cmarket_enable_warnings(market_impact_tests)
+    cmarket_enable_instrumentation(market_impact_tests)
+
+    add_test(
+        NAME MarketImpactTest
+        COMMAND market_impact_tests
+    )
+
+    add_executable(
+        market_impact_integration_tests
+        tests/market_impact_integration_tests.cpp
+    )
+
+    target_include_directories(
+        market_impact_integration_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        market_impact_integration_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        market_impact_integration_tests
+    )
+
+    cmarket_enable_instrumentation(
+        market_impact_integration_tests
+    )
+
+    gtest_discover_tests(
+        market_impact_integration_tests
+    )
+
+    add_executable(
+        analytics_engine_tests
+        tests/analytics_engine_tests.cpp
+    )
+
+    target_include_directories(
+        analytics_engine_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        analytics_engine_tests
+        PRIVATE
+        cmarket_order_book
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        analytics_engine_tests
+    )
+
+    cmarket_enable_instrumentation(
+        analytics_engine_tests
+    )
+
+    gtest_discover_tests(
+        analytics_engine_tests
+    )
+
+    add_executable(
+        analytics_engine_execution_adapter_tests
+        tests/analytics_engine_execution_adapter_tests.cpp
+    )
+
+    target_include_directories(
+        analytics_engine_execution_adapter_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        analytics_engine_execution_adapter_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        analytics_engine_execution_adapter_tests
+    )
+
+    cmarket_enable_instrumentation(
+        analytics_engine_execution_adapter_tests
+    )
+
+    gtest_discover_tests(
+        analytics_engine_execution_adapter_tests
+    )
+
+    add_executable(
+        analytics_failure_isolation_tests
+        tests/analytics_failure_isolation_tests.cpp
+    )
+
+    target_include_directories(
+        analytics_failure_isolation_tests
+        PRIVATE
+        include
+    )
+
+    target_link_libraries(
+        analytics_failure_isolation_tests
+        PRIVATE
+        cmarket_matching_engine
+        GTest::gtest_main
+    )
+
+    cmarket_enable_warnings(
+        analytics_failure_isolation_tests
+    )
+
+    cmarket_enable_instrumentation(
+        analytics_failure_isolation_tests
+    )
+
+    gtest_discover_tests(
+        analytics_failure_isolation_tests
+    )
+
 endif()
