@@ -1,0 +1,43 @@
+
+# Git metadata
+.git
+.gitignore
+
+# Local build directories
+build
+build-*
+cmake-build-*
+out
+
+# CMake-generated files
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing
+
+# Compiled files
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# IDE and editor settings
+.vscode
+.idea
+.DS_Store
+
+# Python artifacts
+__pycache__
+*.pyc
+.venv
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Local environment files
+.env
+.env.*
