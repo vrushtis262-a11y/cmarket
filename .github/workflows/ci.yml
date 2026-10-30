@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -13,22 +14,57 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build and Test
-    runs-on: ubuntu-latest
+    name: Build and Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    env:
+      CCACHE_DIR: ${{ runner.temp }}/ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: "true"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             cmake \
             ninja-build \
+            ccache \
             libboost-all-dev \
             libssl-dev \
             nlohmann-json3-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install \
+            cmake \
+            ninja \
+            ccache \
+            boost \
+            openssl@3 \
+            nlohmann-json
+
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
 
       - name: Configure
         run: |
@@ -37,14 +73,76 @@ jobs:
             -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: |
-          cmake --build build --parallel
+          cmake --build build --parallel 4
+
+      - name: Show compilation cache statistics
+        if: always()
+        run: |
+          ccache --show-stats
 
       - name: Run tests
         run: |
           ctest \
             --test-dir build \
-            --output-on-failure
+            --output-on-failure \
+            --parallel 4 \
+            --output-junit ctest-results.xml
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-results-${{ matrix.os }}
+          path: |
+            build/ctest-results.xml
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: cmarket:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify container startup
+        run: |
+          set +e
+          output=$(docker run --rm cmarket:ci 2>&1)
+          exit_code=$?
+          set -e
+
+          echo "$output"
+
+          if [ "$exit_code" -ne 1 ]; then
+            echo "Unexpected exit code: $exit_code"
+            exit 1
+          fi
+
+          if ! echo "$output" | grep -q "Usage:"; then
+            echo "Expected CLI usage output was not found."
+            exit 1
+          fi
+
+          echo "Docker container startup verified."
