@@ -1,0 +1,23 @@
+
+cmarket Concurrent Benchmark
+==================================================================================
+Producer threads: 4
+Operations per producer: 25000
+Total operations: 100000
+Latency samples: 20000
+
+Throughput
+----------------------------------------------------------------------------------
+Workload                              Operations         Seconds           Ops/sec
+----------------------------------------------------------------------------------
+Concurrent placement                      100000           0.205            487784
+Batched async submission                  100000           0.067           1502605
+Concurrent market execution               100000           0.254            393179
+
+Latency
+----------------------------------------------------------------------------------
+Workload                                   Mean ns        p50 ns        p95 ns        p99 ns
+----------------------------------------------------------------------------------
+Synchronous round-trip                        7783          4833         12000         37958
+Queued async completion                    7786238       7817416       9213708       9392666
+

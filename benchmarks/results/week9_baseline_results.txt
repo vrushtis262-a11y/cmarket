@@ -1,0 +1,13 @@
+
+cmarket Baseline Benchmark
+========================================
+Operations per benchmark: 100000
+
+Benchmark                                Latency        Throughput
+--------------------------------------------------------------
+Limit buy placement                 557.48 ns/op           1793800 ops/sec
+Limit sell placement                303.49 ns/op           3295056 ops/sec
+Order cancellation                  122.74 ns/op           8147026 ops/sec
+Order modification                  294.11 ns/op           3400079 ops/sec
+Market buy matching                 211.49 ns/op           4728356 ops/sec
+

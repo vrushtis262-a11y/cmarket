@@ -1,0 +1,33 @@
+
+cmarket Latency Benchmark
+================================================================================
+Measured iterations per operation: 1000
+Warmup iterations per operation: 100
+
+Operation                Book size        p50 (ns)        p95 (ns)        p99 (ns)      Worst (ns)
+----------------------------------------------------------------------------------------------
+Place order                    100             375             417             542             584
+Match order                    100             583             667             833           22000
+Cancel order                   100             167             209             292             375
+Modify order                   100              83              84              84             208
+Modify price                   100             500             583             667             709
+Multi-level match              100            3291            3667            7750           92209
+Place order                   1000             333             334             375             458
+Match order                   1000             459             583             625            5625
+Cancel order                  1000             208             209             250             375
+Modify order                  1000              42              84              84             166
+Modify price                  1000             500             542             542             584
+Multi-level match             1000            3000            3084            3209           25000
+Place order                  10000             250             292             292            5458
+Match order                  10000             417             500             542            3959
+Cancel order                 10000             250             292             333             375
+Modify order                 10000              42              83             125             208
+Modify price                 10000             500             542             542             666
+Multi-level match            10000            2291            2334            3709           61708
+Place order                 100000             209             250             250             292
+Match order                 100000             250             333             459            3041
+Cancel order                100000             250             250             250             334
+Modify order                100000              41              42              42              83
+Modify price                100000             500             500             542             625
+Multi-level match           100000            2167            2250            2292           15125
+
